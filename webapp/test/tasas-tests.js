@@ -169,6 +169,7 @@ function makeSandbox(payload) {
     setTimeout, clearTimeout,
     console, Date, Intl, Math, JSON, Number, String, Array, Object, Promise, parseFloat, parseInt, isNaN,
     URL: { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} },
+    URLSearchParams,
     Blob: function (parts, opts) { this.parts = parts; this.opts = opts; },
     FileReader: function () {},
     CTEngine: engine

@@ -141,6 +141,7 @@ const sandbox = {
   setTimeout, clearTimeout,
   console, Date, Intl, Math, JSON, Number, String, Array, Object, Promise, parseFloat, parseInt, isNaN,
   URL: { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} },
+  URLSearchParams,
   Blob: function (parts, opts) { this.parts = parts; this.opts = opts; },
   FileReader: function () {},
   CTEngine: engine
@@ -422,6 +423,45 @@ try {
     return called === 1;
   })());
   CT.switchTab('casos');
+
+  /* ---- URL del snapshot: override ?local=1 (túnel) y producción intacta ---- */
+  check('localhost: ratesUrl() al mismo origen ./data/rates.json (sin raw)', (() => {
+    const u = CT.ratesUrl();
+    return u.indexOf('raw.githubusercontent.com') < 0 && /^\.\/data\/rates\.json\?t=/.test(u);
+  })());
+  sandbox.location.hostname = 'tunnel.consutasas.example';
+  sandbox.location.search = '?local=1';
+  check('host remoto + ?local=1: ratesUrl() al mismo origen ./data/rates.json', (() => {
+    const u = CT.ratesUrl();
+    return u.indexOf('raw.githubusercontent.com') < 0 && /^\.\/data\/rates\.json\?t=/.test(u);
+  })());
+  sandbox.location.search = '?tab=tasas&local=1';
+  check('?local=1 junto a otros parámetros: ./data/rates.json igualmente', /^\.\/data\/rates\.json\?t=/.test(CT.ratesUrl()));
+  sandbox.location.search = '?local=0';
+  check('host remoto + ?local=0 (flag ≠ "1"): producción raw.githubusercontent.com',
+    /^https:\/\/raw\.githubusercontent\.com\/afvelis\/consutasas\/data\/rates\.json\?t=/.test(CT.ratesUrl()));
+  sandbox.location.search = '';
+  check('host remoto sin flag: producción raw.githubusercontent.com intacta',
+    /^https:\/\/raw\.githubusercontent\.com\/afvelis\/consutasas\/data\/rates\.json\?t=/.test(CT.ratesUrl()));
+
+  // getRates() debe fetchear exactamente ratesUrl(): misma URL para Actualizar
+  // (CT.onRefreshClick de tasas.js delega a getRates) y el arranque.
+  check('getRates con ?local=1 en host remoto: fetch a ./data/rates.json', (async () => {
+    let fetchedUrl = null;
+    sandbox.location.search = '?local=1';
+    sandbox.fetch = async (url) => { fetchedUrl = url; return { ok: true, text: async () => JSON.stringify(FIXTURE) }; };
+    await CT.getRates({ force: true });
+    sandbox.location.search = '';
+    return /^\.\/data\/rates\.json\?t=/.test(String(fetchedUrl));
+  })());
+  check('getRates sin flag en host remoto: fetch a raw.githubusercontent.com', (async () => {
+    let fetchedUrl = null;
+    sandbox.fetch = async (url) => { fetchedUrl = url; return { ok: true, text: async () => JSON.stringify(FIXTURE) }; };
+    await CT.getRates({ force: true });
+    return /^https:\/\/raw\.githubusercontent\.com/.test(String(fetchedUrl));
+  })());
+  sandbox.fetch = async () => ({ ok: true, text: async () => JSON.stringify(FIXTURE) });
+  sandbox.location.hostname = 'localhost';
 
   /* ---- sin inline en el HTML servido ni en lo renderizado ---- */
   check('index.html sin manejadores inline ni <script> embebido',
