@@ -1,199 +1,211 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://p2p.binance.com https://api2.bybit.com https://corsproxy.io https://api.allorigins.win; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; worker-src 'self' blob:; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://raw.githubusercontent.com; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; worker-src 'self' blob:; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="robots" content="noindex, nofollow">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#0f0f1a">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>ConsuTasas · Tasas P2P en vivo</title>
+  <meta name="description" content="ConsuTasas: tasas P2P de Binance y Bybit (VES, PEN, CLP, COP, MXN) contra BCV, calculadora de remesas y registro de operaciones. Datos oficiales del repo.">
+  <title>ConsuTasas</title>
   <link rel="stylesheet" href="assets/styles.min.css">
+  <script defer src="assets/app.min.js"></script>
 </head>
 <body>
-  <!-- ==================== HEADER ==================== -->
-  <header class="header">
-    <div class="header-inner">
-      <h1>💱 ConsuTasas</h1>
-      <div class="header-status">
-        <span class="status-dot online" id="statusDot"></span>
-        <span id="statusText">En vivo</span>
-      </div>
-    </div>
+  <header class="topbar">
+    <h1>ConsuTasas</h1>
+    <span id="badge-frescura" class="badge badge-wait" role="status">Cargando…</span>
+    <span id="hora-caracas" class="muted"></span>
   </header>
 
-  <!-- ==================== TABS ==================== -->
-  <nav class="tabs" role="tablist">
-    <button class="tab-btn active" data-tab="dashboard" role="tab" aria-selected="true">
-      <span class="tab-icon">📊</span> Tasas
-    </button>
-    <button class="tab-btn" data-tab="calculator" role="tab" aria-selected="false">
-      <span class="tab-icon">🧮</span> Calculadora
-    </button>
-    <button class="tab-btn" data-tab="history" role="tab" aria-selected="false">
-      <span class="tab-icon">🕐</span> Historial
-    </button>
+  <nav class="bottomnav" aria-label="Pestañas">
+    <button type="button" data-tab="tasas" class="navbtn active" aria-controls="tab-tasas" aria-selected="true">Tasas</button>
+    <button type="button" data-tab="calculo" class="navbtn" aria-controls="tab-calculo" aria-selected="false">Cálculo</button>
+    <button type="button" data-tab="operaciones" class="navbtn" aria-controls="tab-operaciones" aria-selected="false">Operaciones</button>
+    <button type="button" data-tab="comprobador" class="navbtn" aria-controls="tab-comprobador" aria-selected="false">Comprobador</button>
   </nav>
 
-  <!-- ==================== MAIN ==================== -->
-  <main class="main">
+  <main>
+    <div id="banner" class="banner" hidden></div>
 
-    <!-- ===== DASHBOARD ===== -->
-    <section class="tab-panel active" id="panel-dashboard" role="tabpanel">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Tasas P2P por moneda</span>
-          <button class="btn btn-sm btn-secondary" id="btnRefreshRates">🔄 Actualizar</button>
-        </div>
-        <p class="text-sm text-muted mb-12">Mejor tasa entre Binance y Bybit. Las tasas son indicativas.</p>
-        <div id="ratesContainer" class="rates-grid">
-          <div class="loading"><span class="spinner"></span><br>Cargando tasas...</div>
-        </div>
+    <!-- ============ 1) TASAS ============ -->
+    <section id="tab-tasas" class="tab active" aria-label="Tasas">
+      <div class="actions">
+        <button type="button" id="btn-refresh" class="btn btn-primary">Actualizar</button>
+        <a class="btn" href="https://github.com/afvelis/consutasas/actions/workflows/rates.yml"
+           target="_blank" rel="noopener noreferrer">Forzar bot</a>
       </div>
-
-      <div class="card mt-12">
-        <div class="card-header">
-          <span class="card-title">Leyenda de modos</span>
-        </div>
-        <div class="text-sm">
-          <div class="result-row"><span class="result-label">🟢 Integrado</span><span>VES como destino (Venezuela)</span></div>
-          <div class="result-row"><span class="result-label">🔵 Combinado</span><span>VES como origen (desde Venezuela)</span></div>
-          <div class="result-row"><span class="result-label">🟣 Cruzada</span><span>Entre países sin VES</span></div>
-        </div>
-      </div>
-
-      <div class="card mt-12">
-        <div class="card-header"><span class="card-title">Monedas disponibles</span></div>
-        <div class="flex-wrap gap-8" id="availableCurrencies">
-          <span class="badge badge-ok">VES · Venezuela</span>
-          <span class="badge badge-ok">PEN · Perú</span>
-          <span class="badge badge-ok">COP · Colombia</span>
-          <span class="badge badge-ok">CLP · Chile</span>
-          <span class="badge badge-ok">MXN · México</span>
-          <span class="badge badge-ok">USD · EE.UU.</span>
-        </div>
-      </div>
+      <div id="ta-bcv" aria-label="Tasas BCV"></div>
+      <div id="ta-p2p" aria-label="P2P Binance y Bybit USD→VES"></div>
+      <div id="ta-variaciones" aria-label="Variaciones y poder adquisitivo"></div>
+      <div id="ta-multipares" aria-label="Pares VES PEN CLP COP MXN"></div>
+      <div id="ta-vesdetalle" aria-label="Detalle VES páginas 1 y 2"></div>
+      <div id="ta-diagnostico" aria-label="Diagnóstico"></div>
     </section>
 
-    <!-- ===== CALCULATOR ===== -->
-    <section class="tab-panel" id="panel-calculator" role="tabpanel">
+    <!-- ============ 2) CÁLCULO ============ -->
+    <section id="tab-calculo" class="tab" aria-label="Cálculo" hidden>
       <div class="card">
-        <div class="card-header">
-          <span class="card-title">Calculadora de tasas</span>
-        </div>
-
-        <!-- Modo -->
-        <div class="form-group">
-          <label for="calcMode">Modo de operación</label>
-          <select id="calcMode">
-            <option value="integrated">🟢 Integrado — Hacia Venezuela (VES destino)</option>
-            <option value="combined">🔵 Combinado — Desde Venezuela (VES origen)</option>
-            <option value="cross" selected>🟣 Cruzada — Entre países</option>
+        <h2>Cálculo de remesa</h2>
+        <p class="muted hint">
+          <strong>Integrado</strong>: hacia Venezuela (destino VES) ·
+          <strong>Combinado</strong>: desde Venezuela (origen VES) ·
+          <strong>Cruzada</strong>: entre países sin VES.
+        </p>
+        <form id="calc-form" novalidate>
+          <label for="calc-modo">Modo</label>
+          <select id="calc-modo">
+            <option value="integrado">🟢 Integrado (destino VES)</option>
+            <option value="combinado">🔵 Combinado (origen VES)</option>
+            <option value="cruzada">🟣 Cruzada (sin VES)</option>
           </select>
-        </div>
 
-        <!-- Origen / Destino -->
-        <div class="row">
-          <div class="form-group">
-            <label for="currencyFrom">Moneda origen</label>
-            <select id="currencyFrom">
-              <option value="PEN">PEN · Perú</option>
-              <option value="COP">COP · Colombia</option>
-              <option value="MXN">MXN · México</option>
-              <option value="CLP">CLP · Chile</option>
-            </select>
+          <div class="form2col">
+            <div>
+              <label for="calc-origen">Moneda que sale</label>
+              <select id="calc-origen">
+                <option value="VES">VES</option><option value="PEN">PEN</option>
+                <option value="CLP">CLP</option><option value="COP">COP</option>
+                <option value="MXN">MXN</option><option value="USD">USD</option>
+              </select>
+            </div>
+            <div>
+              <label for="calc-destino">Moneda que entra</label>
+              <select id="calc-destino">
+                <option value="PEN">PEN</option><option value="VES">VES</option>
+                <option value="CLP">CLP</option><option value="COP">COP</option>
+                <option value="MXN">MXN</option><option value="USD">USD</option>
+              </select>
+            </div>
           </div>
-          <div class="form-group">
-            <label for="currencyTo">Moneda destino</label>
-            <select id="currencyTo">
-              <option value="VES">VES · Venezuela (Bs)</option>
-              <option value="COP">COP · Colombia ($)</option>
-              <option value="PEN">PEN · Perú (S/)</option>
-              <option value="CLP">CLP · Chile ($)</option>
-              <option value="MXN">MXN · México ($)</option>
-              <option value="USD">USD · EE.UU. ($)</option>
-            </select>
-          </div>
-        </div>
 
-        <!-- Monto -->
-        <div class="form-group">
-          <label for="amountInput">Monto a enviar</label>
-          <input type="number" id="amountInput" min="0" step="any" placeholder="Ej: 10000" inputmode="decimal">
-        </div>
+          <label for="calc-monto">Monto (lo que sale)</label>
+          <input id="calc-monto" type="number" inputmode="decimal" step="any" min="0" placeholder="0,00" autocomplete="off">
 
-        <!-- Comisión -->
-        <div class="row">
-          <div class="form-group">
-            <label for="commissionInput">Comisión (%)</label>
-            <input type="number" id="commissionInput" min="0" max="100" step="0.1" value="5" inputmode="decimal">
-          </div>
-          <div class="form-group">
-            <label>&nbsp;</label>
-            <button class="btn btn-sm btn-secondary w-100" id="btnAutoCommission">Auto calcular</button>
-          </div>
-        </div>
+          <label for="calc-comision">Comisión (%)</label>
+          <input id="calc-comision" type="number" inputmode="decimal" step="any" min="0" max="100" value="5" autocomplete="off">
+          <p class="muted hint">Por defecto 5 %; si el origen es COP, 8 %.</p>
 
-        <!-- Botón Calcular -->
-        <button class="btn btn-primary mt-8" id="btnCalculate">🧮 Calcular remesa</button>
+          <button type="submit" id="calc-go" class="btn btn-primary btn-big">Calcular</button>
+          <button type="button" id="calc-registrar" class="btn" disabled>Registrar en Operaciones</button>
+        </form>
       </div>
-
-      <!-- Resultados -->
-      <div id="calcResults"></div>
-
-      <!-- Advertencia -->
-      <div class="card mt-16" style="border-color:rgba(253,203,110,0.2)">
-        <p class="text-xs text-sm" style="color:var(--yellow)">⚠️ Las tasas P2P son indicativas y pueden no representar disponibilidad real. El resultado real puede variar según el anunciante y la liquidez del momento.</p>
-      </div>
+      <div id="calc-out" aria-live="polite"></div>
     </section>
 
-    <!-- ===== HISTORY ===== -->
-    <section class="tab-panel" id="panel-history" role="tabpanel">
+    <!-- ============ 3) OPERACIONES ============ -->
+    <section id="tab-operaciones" class="tab" aria-label="Operaciones" hidden>
       <div class="card">
-        <div class="card-header">
-          <span class="card-title">Historial de cálculos</span>
-          <span class="text-xs text-muted" id="historyCount">0 registros</span>
-        </div>
-
-        <div id="historyList">
-          <div class="empty-state">
-            <div class="empty-icon">📋</div>
-            <p>No hay cálculos guardados aún.<br>Usa la calculadora para comenzar.</p>
+        <h2>Nueva operación</h2>
+        <form id="ops-form" novalidate>
+          <div class="form2col">
+            <div>
+              <label for="ops-fecha">Fecha</label>
+              <input id="ops-fecha" type="date" autocomplete="off">
+            </div>
+            <div>
+              <label for="ops-origen">Origen</label>
+              <select id="ops-origen">
+                <option value="VES">VES</option><option value="PEN">PEN</option>
+                <option value="CLP">CLP</option><option value="COP">COP</option>
+                <option value="MXN">MXN</option><option value="USD">USD</option>
+              </select>
+            </div>
           </div>
-        </div>
 
-        <div class="mt-16" id="historySummary" style="display:none">
-          <h4 class="text-sm fw-bold mb-8">Totales por moneda</h4>
-          <div id="summaryContent"></div>
-        </div>
+          <fieldset>
+            <legend>Lo que sale (moneda / USDT)</legend>
+            <div class="form2col">
+              <div>
+                <label for="ops-sale">Monto que sale</label>
+                <input id="ops-sale" type="number" inputmode="decimal" step="any" min="0" placeholder="0,00" autocomplete="off">
+              </div>
+              <div>
+                <label for="ops-sale-rate">Tasa (moneda/USDT)</label>
+                <input id="ops-sale-rate" type="number" inputmode="decimal" step="any" min="0" placeholder="0,0000" autocomplete="off">
+              </div>
+            </div>
+          </fieldset>
 
-        <div class="btn-group mt-16">
-          <button class="btn btn-sm btn-secondary" id="btnExportJSON">📥 Exportar JSON</button>
-          <button class="btn btn-sm btn-secondary" id="btnImportJSON">📤 Importar JSON</button>
-          <button class="btn btn-sm btn-secondary" id="btnExportCSV">📊 Exportar CSV</button>
-        </div>
-        <button class="btn btn-danger btn-sm mt-8" id="btnClearHistory">🗑️ Limpiar historial</button>
-        <input type="file" id="fileImport" accept=".json" style="display:none">
+          <div class="form2col">
+            <div>
+              <label for="ops-destino">Destino</label>
+              <select id="ops-destino">
+                <option value="PEN">PEN</option><option value="VES">VES</option>
+                <option value="CLP">CLP</option><option value="COP">COP</option>
+                <option value="MXN">MXN</option><option value="USD">USD</option>
+              </select>
+            </div>
+          </div>
+
+          <fieldset>
+            <legend>Lo que entra (moneda / USDT)</legend>
+            <div class="form2col">
+              <div>
+                <label for="ops-entry">Monto que entra</label>
+                <input id="ops-entry" type="number" inputmode="decimal" step="any" min="0" placeholder="0,00" autocomplete="off">
+              </div>
+              <div>
+                <label for="ops-entry-rate">Tasa (moneda/USDT)</label>
+                <input id="ops-entry-rate" type="number" inputmode="decimal" step="any" min="0" placeholder="0,0000" autocomplete="off">
+              </div>
+            </div>
+          </fieldset>
+
+          <label for="ops-obs">Observación / persona</label>
+          <input id="ops-obs" type="text" maxlength="200" autocomplete="off" placeholder="Nombre, referencia, nota…">
+
+          <label class="checkline">
+            <input id="ops-tercero" type="checkbox">
+            <span>Tercero (25 %)</span>
+          </label>
+
+          <button type="submit" class="btn btn-primary btn-big">Guardar operación</button>
+        </form>
       </div>
+
+      <div id="ops-preview" aria-live="polite"></div>
+
+      <div class="card">
+        <div class="ops-toolbar">
+          <label for="ops-mes" class="inlinelab">Mes</label>
+          <select id="ops-mes"></select>
+          <button type="button" id="ops-exp-csv" class="btn btn-small">Exportar CSV</button>
+          <button type="button" id="ops-exp-json" class="btn btn-small">Exportar JSON</button>
+          <button type="button" id="ops-imp" class="btn btn-small">Importar JSON</button>
+          <input id="ops-imp-file" type="file" accept=".json,application/json" hidden>
+        </div>
+        <details>
+          <summary>Formato del JSON de respaldo</summary>
+          <pre class="precode" id="ops-formato"></pre>
+        </details>
+      </div>
+
+      <div id="ops-totales" aria-label="Totales del mes"></div>
+      <div id="ops-lista" aria-label="Lista de operaciones"></div>
+    </section>
+
+    <!-- ============ 4) COMPROBADOR ============ -->
+    <section id="tab-comprobador" class="tab" aria-label="Comprobador" hidden>
+      <div class="card">
+        <h2>Origen de los datos</h2>
+        <p class="muted hint">
+          Los datos provienen de <code>rates.json</code> publicado por el bot del repositorio
+          (<code>afvelis/consutasas</code>). Esta página no consulta Binance, Bybit ni el BCV directamente.
+        </p>
+        <div id="chk-fuegonacional"></div>
+        <div id="chk-momento"></div>
+        <div id="chk-integridad"></div>
+        <div class="chklinks">
+          <a href="https://raw.githubusercontent.com/afvelis/consutasas/data/rates.json" target="_blank" rel="noopener noreferrer">JSON crudo</a>
+          · <a href="https://github.com/afvelis/consutasas/commits/data" target="_blank" rel="noopener noreferrer">Commits rama data</a>
+          · <a href="https://github.com/afvelis/consutasas/actions/workflows/rates.yml" target="_blank" rel="noopener noreferrer">Workflow del bot</a>
+        </div>
+        <button type="button" id="chk-insumos-btn" class="btn">Ver insumos</button>
+        <pre class="precode" id="chk-insumos" hidden></pre>
+      </div>
+      <div id="chk-fuentes" aria-label="Estado por fuente"></div>
+      <div id="chk-diagnostico" aria-label="Diagnóstico del snapshot"></div>
     </section>
   </main>
-
-  <!-- ==================== FOOTER ==================== -->
-  <footer class="footer">
-    <p>ConsuTasas · Datos de Binance P2P y Bybit P2P. Tasas indicativas, no garantizadas.</p>
-    <p class="mt-8">Caché local · 5 min TTL · Funciona offline con datos previos</p>
-  </footer>
-
-  <!-- ==================== MODAL ==================== -->
-  <div class="modal-overlay" id="modalOverlay">
-    <div class="modal" id="modalContent"></div>
-  </div>
-
-  <!-- ==================== TOAST ==================== -->
-  <div class="toast-container" id="toastContainer"></div>
-
-  <!-- ==================== APP ==================== -->
-  <script src="assets/app.min.js" defer></script>
 </body>
 </html>
