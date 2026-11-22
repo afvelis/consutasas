@@ -1,0 +1,374 @@
+{
+  "schema": "consutasas/rates.v1",
+  "generatedAt": "2026-11-22T15:02:39Z",
+  "generatedAtCaracas": "2026-11-22T11:02:39-04:00",
+  "sources": {
+    "bcv": {
+      "status": "ok",
+      "http": 200,
+      "samples": {
+        "usd": 919.8227,
+        "eur": 1011.17949056
+      },
+      "url": "https://www.bcv.org.ve/",
+      "fuente": "BCV-Web",
+      "actualizado": "Martes, 24 Noviembre  2026"
+    },
+    "binance": {
+      "status": "ok",
+      "http": 200,
+      "samples": {
+        "ads": 406
+      },
+      "url": "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
+    },
+    "bybit": {
+      "status": "ok",
+      "http": 200,
+      "samples": {
+        "ads": 372
+      },
+      "url": "https://api2.bybit.com/fiat/otc/item/online"
+    }
+  },
+  "pairs": {
+    "VES": {
+      "code": "VES",
+      "status": "ok",
+      "compra": 1098.2057,
+      "venta": 1087.9581,
+      "spreadPct": -0.93,
+      "mejorCompra": 1089.96,
+      "mejorVenta": 1100.0,
+      "mejorSpreadPct": 0.92,
+      "muestras": {
+        "buy": 81,
+        "sell": 81,
+        "total": 162
+      },
+      "promediosPorPagina": {
+        "compra": {
+          "page1": 1096.6863,
+          "page2": 1099.763
+        },
+        "venta": {
+          "page1": 1089.6405,
+          "page2": 1086.2337
+        }
+      },
+      "porPlataforma": {
+        "binance": {
+          "compra": 1097.2069,
+          "venta": 1091.5274,
+          "muestras": {
+            "compra": 41,
+            "venta": 41
+          }
+        },
+        "bybit": {
+          "compra": 1099.2294,
+          "venta": 1084.2997,
+          "muestras": {
+            "compra": 40,
+            "venta": 40
+          }
+        }
+      }
+    },
+    "PEN": {
+      "code": "PEN",
+      "status": "ok",
+      "compra": 3.5845,
+      "venta": 3.4462,
+      "spreadPct": -3.86,
+      "mejorCompra": 3.18,
+      "mejorVenta": 3.502,
+      "mejorSpreadPct": 10.13,
+      "muestras": {
+        "buy": 81,
+        "sell": 81,
+        "total": 162
+      },
+      "promediosPorPagina": {
+        "compra": {
+          "page1": 3.5212,
+          "page2": 3.6493
+        },
+        "venta": {
+          "page1": 3.4816,
+          "page2": 3.4099
+        }
+      },
+      "porPlataforma": {
+        "binance": {
+          "compra": 3.53,
+          "venta": 3.4904,
+          "muestras": {
+            "compra": 41,
+            "venta": 41
+          }
+        },
+        "bybit": {
+          "compra": 3.6403,
+          "venta": 3.4008,
+          "muestras": {
+            "compra": 40,
+            "venta": 40
+          }
+        }
+      }
+    },
+    "CLP": {
+      "code": "CLP",
+      "status": "ok",
+      "compra": 1044.4825,
+      "venta": 1013.5164,
+      "spreadPct": -2.96,
+      "mejorCompra": 876.0,
+      "mejorVenta": 1033.03,
+      "mejorSpreadPct": 17.93,
+      "muestras": {
+        "buy": 72,
+        "sell": 80,
+        "total": 152
+      },
+      "promediosPorPagina": {
+        "compra": {
+          "page1": 1029.2135,
+          "page2": 1063.5687
+        },
+        "venta": {
+          "page1": 1025.1595,
+          "page2": 1001.8732
+        }
+      },
+      "porPlataforma": {
+        "binance": {
+          "compra": 1034.6782,
+          "venta": 1026.0767,
+          "muestras": {
+            "compra": 40,
+            "venta": 40
+          }
+        },
+        "bybit": {
+          "compra": 1056.7378,
+          "venta": 1000.956,
+          "muestras": {
+            "compra": 32,
+            "venta": 40
+          }
+        }
+      }
+    },
+    "COP": {
+      "code": "COP",
+      "status": "ok",
+      "compra": 3522.9472,
+      "venta": 3379.0956,
+      "spreadPct": -4.08,
+      "mejorCompra": 2999.0,
+      "mejorVenta": 3470.0,
+      "mejorSpreadPct": 15.71,
+      "muestras": {
+        "buy": 76,
+        "sell": 81,
+        "total": 157
+      },
+      "promediosPorPagina": {
+        "compra": {
+          "page1": 3465.8337,
+          "page2": 3589.8517
+        },
+        "venta": {
+          "page1": 3398.989,
+          "page2": 3358.7047
+        }
+      },
+      "porPlataforma": {
+        "binance": {
+          "compra": 3446.4056,
+          "venta": 3409.5922,
+          "muestras": {
+            "compra": 41,
+            "venta": 41
+          }
+        },
+        "bybit": {
+          "compra": 3612.6103,
+          "venta": 3347.8365,
+          "muestras": {
+            "compra": 35,
+            "venta": 40
+          }
+        }
+      }
+    },
+    "MXN": {
+      "code": "MXN",
+      "status": "ok",
+      "compra": 19.7658,
+      "venta": 18.5766,
+      "spreadPct": -6.02,
+      "mejorCompra": 19.26,
+      "mejorVenta": 19.18,
+      "mejorSpreadPct": -0.42,
+      "muestras": {
+        "buy": 65,
+        "sell": 80,
+        "total": 145
+      },
+      "promediosPorPagina": {
+        "compra": {
+          "page1": 19.5532,
+          "page2": 20.106
+        },
+        "venta": {
+          "page1": 18.8905,
+          "page2": 18.2628
+        }
+      },
+      "porPlataforma": {
+        "binance": {
+          "compra": 19.4345,
+          "venta": 19.0393,
+          "muestras": {
+            "compra": 40,
+            "venta": 40
+          }
+        },
+        "bybit": {
+          "compra": 20.296,
+          "venta": 18.114,
+          "muestras": {
+            "compra": 25,
+            "venta": 40
+          }
+        }
+      }
+    }
+  },
+  "vesDetail": {
+    "compraTotal": 1098.2057,
+    "ventaTotal": 1087.9581,
+    "mejorPrecioCompra": 1089.96,
+    "mejorPrecioVenta": 1100.0,
+    "compraPromP1": 1096.6863,
+    "compraPromP2": 1099.763,
+    "ventaPromP1": 1089.6405,
+    "ventaPromP2": 1086.2337,
+    "spreadTotal": -0.93,
+    "spreadMejores": 0.92,
+    "muestras": {
+      "compra": 81,
+      "venta": 81
+    },
+    "status": "ok"
+  },
+  "cross": {
+    "BCV USD → Binance VES": {
+      "origen": 919.8227,
+      "destino": 1091.5274,
+      "pctVariacion": 18.67
+    },
+    "BCV USD → Bybit VES": {
+      "origen": 919.8227,
+      "destino": 1084.2997,
+      "pctVariacion": 17.88
+    },
+    "Binance VES → Bybit VES": {
+      "origen": 1091.5274,
+      "destino": 1084.2997,
+      "pctVariacion": -0.66
+    },
+    "BCV USD → BCV EUR": {
+      "origen": 919.8227,
+      "destino": 1011.17949056,
+      "pctVariacion": 9.93
+    },
+    "BCV EUR → Binance VES": {
+      "origen": 1011.17949056,
+      "destino": 1091.5274,
+      "pctVariacion": 7.95
+    },
+    "BCV EUR → Bybit VES": {
+      "origen": 1011.17949056,
+      "destino": 1084.2997,
+      "pctVariacion": 7.23
+    }
+  },
+  "variations": [
+    {
+      "name": "BCV USD → Binance VES",
+      "pct": 18.67
+    },
+    {
+      "name": "BCV USD → Bybit VES",
+      "pct": 17.88
+    },
+    {
+      "name": "Binance VES → Bybit VES",
+      "pct": -0.66
+    },
+    {
+      "name": "BCV USD → BCV EUR",
+      "pct": 9.93
+    },
+    {
+      "name": "BCV EUR → Binance VES",
+      "pct": 7.95
+    },
+    {
+      "name": "BCV EUR → Bybit VES",
+      "pct": 7.23
+    }
+  ],
+  "purchasingPower": [
+    {
+      "name": "BCV USD → Binance VES",
+      "lossPct": 15.73,
+      "factor": 1.1867
+    },
+    {
+      "name": "BCV USD → Bybit VES",
+      "lossPct": 15.17,
+      "factor": 1.1788
+    },
+    {
+      "name": "BCV EUR → Binance VES",
+      "lossPct": 7.36,
+      "factor": 1.0795
+    },
+    {
+      "name": "BCV EUR → Bybit VES",
+      "lossPct": 6.74,
+      "factor": 1.0723
+    }
+  ],
+  "diagnostics": {
+    "binanceRequests": {
+      "requests": 20,
+      "ok": 20,
+      "fallos": 0
+    },
+    "bybitRequests": {
+      "requests": 20,
+      "ok": 20,
+      "fallos": 0
+    },
+    "elapsedSeconds": 12.73,
+    "pagePromedios": "media simple (fmean) por página y lado; promediosPorPagina usa solo la página indicada"
+  },
+  "warnings": [],
+  "meta": {
+    "pages": 2,
+    "rows": 20,
+    "fiats": [
+      "VES",
+      "PEN",
+      "CLP",
+      "COP",
+      "MXN"
+    ]
+  }
+}

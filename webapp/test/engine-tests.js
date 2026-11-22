@@ -3,7 +3,9 @@
  * casos PEN→VES / VES→COP con fixture explícito (fixture:true), ledger Zelle
  * 320→305 (plusvalía 15, diezmo 1.5, tercero 3.75, neto 9.75), transferencia,
  * retiro, aporte, exchange, cadena de hashes con detección de alteración,
- * balance, import/export y cierre de periodo. */
+ * balance, import/export y cierre de periodo. Las aserciones de números EXACTOS
+ * corren contra webapp/test/fixtures/rates-frozen.json (snapshot congelado);
+ * el JSON vivo data/rates.json solo se usa como smoke ESTRUCTURAL en [12]. */
 
 'use strict';
 
@@ -117,8 +119,17 @@ check('par no registrado rechazado', engine.caseQuote(S, FX, { pair: ['MXN', 'CL
 check('monto <= 0 rechazado', engine.caseQuote(S, FX, { pair: ['VES', 'PEN'], deposit: 0 }).ok === false);
 check('monto micro: entrega redondea a 0 → ok:false (no throw)', engine.caseQuote(S, FX, { pair: ['VES', 'PEN'], deposit: 0.0000001 }).ok === false);
 
-console.log('\n[3b] Números EXACTOS de la especificación contra rates.json real (fixture del sitio)');
-const localRatesEarly = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'rates.json'), 'utf8'));
+console.log('\n[3b] Números EXACTOS de la especificación contra el fixture CONGELADO (rates-frozen.json)');
+/* Snapshot congelado del sitio (commit 29cf6d7: PEN compra 3.5845, VES compra 1098.2057 / venta 1087.9581,
+ * COP compra 3522.9472 / venta 3379.0956). Los literales exactos de abajo solo valen para ESTE snapshot;
+ * el propio bot regenera webapp/data/rates.json a diario, así que nunca debe cargarse el JSON vivo aquí.
+ */
+const localRatesEarly = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'rates-frozen.json'), 'utf8'));
+check('rates-frozen.json es el snapshot esperado (PEN 3.5845, VES 1098.2057/1087.9581, COP 3522.9472/3379.0956)',
+  localRatesEarly.schema === 'consutasas/rates.v1' &&
+  localRatesEarly.pairs.PEN.compra === 3.5845 &&
+  localRatesEarly.pairs.VES.compra === 1098.2057 && localRatesEarly.pairs.VES.venta === 1087.9581 &&
+  localRatesEarly.pairs.COP.compra === 3522.9472 && localRatesEarly.pairs.COP.venta === 3379.0956);
 const FXreal = engine.buildFx(localRatesEarly);
 // PEN→VES, 100 PEN @7% → 28.227,12 VES (compra PEN 3.5845, venta VES 1087.9581)
 const spec1 = engine.caseQuote(S, FXreal, { pair: ['VES', 'PEN'], direction: 'BA', deposit: 100 });
@@ -134,7 +145,7 @@ check('USD/USD 320→305 se mantiene con 15/1.5/3.75/9.75', (() => {
   return q.delivered === 305 && q.profitUsd === 15 && q.diezmo === 1.5 && q.tercero === 3.75 && q.neto === 9.75;
 })());
 
-console.log('\n[3c] Modo INVERSO: target fijado, depósito deducido (rates.json real)');
+console.log('\n[3c] Modo INVERSO: target fijado, depósito deducido (fixture congelado)');
 // PEN→VES inverso: target 28.227,12 VES @7% → depósito ≈ 100,00 PEN (compra PEN 3.5845, venta VES 1087.9581).
 const revPEN = engine.caseQuote(S, FXreal, { pair: ['VES', 'PEN'], direction: 'BA', target: 28227.12 });
 check('PEN→VES inverso: ok, kind pair, reversed', revPEN.ok && revPEN.kind === 'pair' && revPEN.reversed === true);
@@ -366,16 +377,29 @@ check('cadena válida tras migración', engine.verifyChain(migratedState.movemen
 check('migración idempotente (no duplica)', engine.loadAndMigrate(store).movements.filter(mm => mm.type === 'legacy').length === 3);
 check('migrada persiste en ct_movements', JSON.parse(store.getItem(engine.STORAGE_KEYS.movements)).length === 3);
 
-console.log('\n[12] Smoke: webapp/data/rates.json local (fixture del sitio, sin inventar)');
+console.log('\n[12] Smoke ESTRUCTURAL de webapp/data/rates.json vivo (sin asertar tasas exactas)');
+/* El bot regenera este archivo a diario: aquí solo se valida la ESTRUCTURA del snapshot,
+ * nunca literales de tasas (esas se asertan en [3b]/[3c]/[3d] contra el fixture congelado). */
 const localRates = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'rates.json'), 'utf8'));
-check('rates.json local parsea con schema v1', localRates.schema === 'consutasas/rates.v1');
-const localFx = engine.buildFx(localRates);
-const missingFiats = ['VES', 'PEN', 'COP', 'CLP', 'MXN'].filter(f => localFx.unitsPerUsd[f] == null);
-check('todas las fiat del sitio tienen tasa', missingFiats.length === 0, 'faltan: ' + missingFiats.join(','));
-check('ambos lados presentes en el snapshot real (compra/venta)',
-  localFx.unitsPerUsdCompra.PEN === localRates.pairs.PEN.compra && localFx.unitsPerUsdVenta.PEN === localRates.pairs.PEN.venta);
-check('snapshot local aún sin eurRef → null + aviso (no inventa)',
-  localFx.unitsPerUsd.EUR === null && engine.fxWarnings(localFx).some(w => /EUR referencial/.test(w)));
+check('rates.json vivo parsea con schema v1', localRates.schema === 'consutasas/rates.v1');
+const siteFiats = ['VES', 'PEN', 'COP', 'CLP', 'MXN'];
+check('todas las fiat del sitio registran pares', siteFiats.every(f => localRates.pairs && localRates.pairs[f] != null));
+const adsProblem = (() => {
+  for (const f of siteFiats) {
+    const ads = localRates.pairs[f].ads || {};
+    const cmp = ads.compra || [], vta = ads.venta || [];
+    if (cmp.length !== 20 || vta.length !== 20) return f + ': compra=' + cmp.length + ' venta=' + vta.length;
+    const okFields = a => a.price > 0 && a.min > 0 && a.max >= a.min && a.available > 0 &&
+      typeof a.platform === 'string' && a.platform.length > 0 && Number.isFinite(a.page);
+    for (const a of cmp.concat(vta)) { if (!okFields(a)) return f + ': ' + JSON.stringify(a); }
+    for (let i = 1; i < cmp.length; i++) { if (cmp[i - 1].price > cmp[i].price) return f + ': compra no ascendente'; }
+    for (let i = 1; i < vta.length; i++) { if (vta[i - 1].price < vta[i].price) return f + ': venta no descendente'; }
+  }
+  return null;
+})();
+check('cada fiat trae ads compra/venta 20/20 con orden asc/desc y campos completos', adsProblem === null, adsProblem || '');
+check('eurRef con usd finito y status', localRates.eurRef != null &&
+  Number.isFinite(localRates.eurRef.usd) && typeof localRates.eurRef.status === 'string' && localRates.eurRef.status.length > 0);
 
 console.log('\n[13] Pares del usuario y cotización de pares personalizados');
 const s2 = engine.defaultSettings();
