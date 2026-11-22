@@ -1,226 +1,96 @@
-# 💱 ConsuTasas — Calculadora P2P multi-moneda
+# 💱 ConsuTasas — panel de tasas y registro de operaciones
 
-Herramienta web (uso familiar) que calcula conversiones entre **VES, PEN, COP, CLP, MXN y USD** usando tasas reales de **Binance P2P** y **Bybit P2P**.
+Herramienta web (uso familiar) **phone-first** que consume el snapshot `rates.json` generado por el bot del repositorio (tasa P2P de **Binance** y **Bybit** contra **BCV**, en **VES, PEN, CLP, COP y MXN**), con calculadora de remesas y registro privado de operaciones.
 
-- `index.html` = **solo maquetado** (sin lógica ni estilos embebidos).
-- Toda la lógica en `assets/app.js` y los estilos en `assets/styles.css`.
-- Producción minificada en `dist/` (nombres internos ofuscados).
+- `webapp/index.html` = **solo maquetado** (sin `<script>`/`<style>` inline ni `onclick`).
+- Lógica en `webapp/assets/app.js` y estilos en `webapp/assets/styles.css` (vanilla, `defer`).
+- Producción minificada en `webapp/dist/` → se publica en la rama `gh-pages` (raíz).
 
-**🌐 En vivo:** https://afvelis.github.io/consutasas/  
-**📦 Repo:** https://github.com/afvelis/consutasas (público)
-
----
-
-## 1. Seguridad y privacidad (leer)
-
-Esta app se publica en un **repositorio público**, por lo que su código es inspeccionable por cualquiera. Eso es así por diseño y **no compromete datos**, porque:
-
-- **No hay secretos**: las APIs P2P son públicas y no usan claves.
-- **No hay backend ni base de datos**: no se envía ni se guarda información en servidores.
-- **El historial vive solo en tu navegador** (`localStorage`), por dispositivo. Otros visitantes no lo ven.
-- **No hay cookies, analytics ni tracking**.
-
-Medidas implementadas:
-
-| Medida | Detalle |
-|---|---|
-| HTML básico | `index.html` sin `<script>`/`<style>` inline ni `onclick` |
-| Lógica interna | Todo en `assets/app.js`; en producción `dist/assets/app.min.js` (minificado + nombres ofuscados) |
-| CSP | `Content-Security-Policy` meta: `script-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `form-action 'none'` |
-| `noindex` | `<meta name="robots" content="noindex, nofollow">` |
-| Sanitización | Importación JSON validada: monedas en lista blanca, números finitos, textos escapados (`esc()`) antes de `innerHTML` |
-| Exportación segura | JSON/CSV generados localmente; no se suben a ningún sitio |
-
-> ⚠️ **Honestidad técnica:** la minificación **no es cifrado**; solo dificulta la lectura. No existe “seguridad por ocultamiento” en código de cliente. Si necesitas **control de acceso real** (que solo tu familia pueda abrirla), eso requiere autenticación en servidor: GitHub Pages privado (plan Pro/Team), Cloudflare Access, o un hosting con contraseña (Netlify/Vercel). Esta versión **no** incluye login.
+**🌐 En vivo:** https://afvelis.github.io/consutasas/
+**📦 Datos:** `https://raw.githubusercontent.com/afvelis/consutasas/data/rates.json` (CORS `*`)
 
 ---
 
-## 2. Estructura del proyecto
+## 1. Arquitectura
 
 ```
 webapp/
-├── index.html              # maquetado (solo HTML + <link>/<script src>)
+├── index.html              # maquetado (HTML + <link>/<script defer src>)
 ├── assets/
-│   ├── styles.css          # estilos (fuente legible)
-│   └── app.js              # lógica (fuente legible)
-├── dist/                   # PRODUCCIÓN (esto se publica)
+│   ├── styles.css          # estilos mobile-first
+│   └── app.js              # lógica completa (IIFE, sin dependencias)
+├── dist/                   # PRODUCCIÓN (publicada en gh-pages)
 │   ├── index.html          # apunta a *.min.*
-│   └── assets/
-│       ├── styles.min.css
-│       └── app.min.js
-├── build.sh                # regenera dist/ (terser + minificador CSS)
-└── README.md
+│   └── assets/{app.min.js, styles.min.css}
+├── build.sh                # regenera dist/ (npx terser + minificador CSS propio)
+└── test/run-tests.js       # pruebas unitarias + smoke render con DOM simulado
 ```
 
-Regenerar producción: `./build.sh`
+- **Bot de tasas** (NO tocar): `.github/workflows/rates.yml` + `scripts/build_rates.py` — cada ~5 min consultan BCV/Binance/Bybit y publican `rates.json` en la rama `data`.
+- **UI** (esto): 4 pestañas con navegación inferior; fondo oscuro; entradas grandes con `inputmode="decimal"`.
 
----
+## 2. Seguridad y privacidad
 
-## 3. Stack y decisiones
-
-| Componente | Elección | Motivo |
-|---|---|---|
-| Frontend | HTML + CSS + JS vanilla | Sin frameworks ni build obligatorio; rápido y portable |
-| Deploy | GitHub Pages (sitio de usuario) | Gratis, HTTPS, publicado desde `main` |
-| Tasas | Binance P2P + Bybit P2P | APIs públicas, 6 fiat, sin auth |
-| Caché | `localStorage` (TTL 5 min) | Offline y arranque instantáneo |
-| Historial | `localStorage` | Privado por dispositivo; export/import manual |
-| PWA | Service Worker (Blob) | App shell offline |
-
----
-
-## 4. Fuentes de datos
-
-### Binance P2P
-`POST https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search`
-Body JSON: `asset=USDT`, `fiat=<MONEDA>`, `tradeType=BUY|SELL`, `rows=20`.
-Campos: `data[].adv.price`, `minSingleTransAmount`, `maxSingleTransAmount`, `surplusAmount`.
-
-### Bybit P2P
-`POST https://api2.bybit.com/fiat/otc/item/online` (form-urlencoded).
-Campos: `tokenId=USDT`, `currencyId=<MONEDA>`, `side=1` (comprar USDT) / `side=0` (vender USDT).
-Respuesta: `result.items[].price`, `minAmount`, `maxAmount`, `lastQuantity`.
-
-> Bybit puede no permitir CORS desde navegador. La app intenta **directo → corsproxy.io → allorigins.win**. Si todas fallan, usa Binance y marca la fuente como no disponible. No inventa tasas.
-
-### Monedas
-| Código | País | Símbolo |
-|---|---|---|
-| VES | Venezuela | Bs |
-| PEN | Perú | S/ |
-| COP | Colombia | $ |
-| CLP | Chile | $ |
-| MXN | México | $ |
-| USD | EE.UU. | $ |
-
----
-
-## 5. Lógica de cálculo
-
-```
-USDT_Bruto   = Monto_Origen / Tasa_Compra_Origen
-USDT_Neto    = USDT_Bruto × (1 − Comisión%)
-Monto_Destino = USDT_Neto × Tasa_Venta_Destino
-```
-
-- **Tasa origen** = mejor tasa **COMPRA** USDT (Binance o Bybit).
-- **Tasa destino** = mejor tasa **VENTA** USDT (Binance o Bybit).
-- **Comisión** = porcentual sobre USDT bruto; default 5% (8% si origen COP); editable 0–100%.
-
-### Modos
-| Modo | Descripción |
+| Medida | Detalle |
 |---|---|
-| 🟢 Integrado | Hacia Venezuela (VES destino) |
-| 🔵 Combinado | Desde Venezuela (VES origen) |
-| 🟣 Cruzada | Entre países sin VES |
+| HTML básico | `index.html` sin scripts/estilos inline ni manejadores inline |
+| CSP (`<meta>`) | `script-src 'self'`; `connect-src` solo permite `raw.githubusercontent.com`; `object-src`, `base-uri`, `form-action` en `none` |
+| `noindex` | `<meta name="robots" content="noindex, nofollow">` |
+| Sanitización | Todo lo interpolado pasa por `esc()`; importación JSON validada (monedas en lista blanca, números finitos, fechas válidas) |
+| Datos personales | Historial solo en `localStorage` (`consumo_operations`), por dispositivo; export/import manual |
 
-### Casos de referencia (tasas de contexto, no cotización real)
-| Caso | Origen→Destino | Monto | Resultado |
-|---|---|---|---|
-| 1 | PEN→VES | 77 | 21.457,10 Bs |
-| 2 | VES→COP | 10.000 | 33.250 COP |
-| 3 | PEN→COP | 241 | 200.085,24 COP |
+La minificación no es cifrado; toda la lógica es inspeccionable por diseño y no hay secretos: las APIs del bot son públicas y sin claves.
 
----
+## 3. Datos del snapshot (schema publicado)
 
-## 6. Pantallas
+Campos que consume la UI: `generatedAt`, `generatedAtCaracas`, `sources.{bcv,binance,bybit}` (estado/HTTP/`samples`), `pairs.{VES,PEN,CLP,COP,MXN}` (`compra`, `venta`, `spreadPct`, `mejorCompra/Venta`, `mejorSpreadPct`, `muestras`, `promediosPorPagina`, `porPlataforma`), `vesDetail`, `cross` (rutas con % de variación), `variations[]`, `purchasingPower[]`, `diagnostics`, `meta` (pages/rows/fiats), `warnings`.
 
-1. **Tasas**: compra/venta por moneda, fuente (Binance/Bybit), frescura (En vivo/Caché/Sin conexión), botón actualizar.
-2. **Calculadora**: modo, origen/destino (6 monedas), monto, comisión + auto, desglose completo y frase *“Con X … entregas Y …”*.
-3. **Historial**: registros (máx. 100), totales por moneda, export JSON/CSV, import JSON con validación y anti-duplicados, limpiar.
+- **Frescura**: verde **Reciente** < 10 min · amarillo ≥ 10 · rojo > 20 (**Desactualizado**), calculada con `generatedAt`.
+- **Auto-refresh** cada 60 s solo si la pestaña está visible (no interrumpe el scroll), `?t=Date.now()` anti-caché.
+- **Sin conexión**: usa la copia guardada (`consumo_rates`) e indica honestamente “datos guardados hace X”; nunca inventa tasas (`null` → `—`).
 
----
+## 4. Pestañas
 
-## 7. Caché y offline
+1. **Tasas**: BCV USD/EUR, P2P Binance/Bybit USD→VES con variación vs BCV (`cross`), `variations` y `purchasingPower`, tarjetas multi-par en rejilla de 2 columnas (VE/PE/CL/COP/MXN), detalle VES (totales, mejores precios, promedios P1/P2, muestras), diagnóstico y avisos del bot; botones **Actualizar** y **Forzar bot** (workflow).
+2. **Cálculo**: modos **Integrado** (hacia VES), **Combinado** (desde VES), **Cruzada** (sin VES); monedas VES/PEN/COP/CLP/MXN/USD (sin pares iguales); comisión 5 % (8 % si origen COP); tasa origen = `pairs[from].compra`, destino = `pairs[to].venta`; **USD se asume 1:1 con USDT** (aviso visible). `USDT_bruto = monto/compra`, `USDT_neto = bruto×(1−comisión)`, `resultado = neto×venta`; botón **Registrar en Operaciones** precarga esa pestaña.
+3. **Operaciones** (reemplaza TotalizadorRemesasV5): fecha, origen/destino, “lo que sale” + tasa, “lo que entra” + tasa, observación, casilla **Tercero (25 %)**. Cálculo exacto en USD: `costoUSD = sale/saleRate`, `netoUSD = entry/entryRate`, `plusvalia = netoUSD − costoUSD`; si es positiva: base = plusvalía, **diezmo 10 %**, tercero 25 % opcional, neto para mí = plusvalía − diezmo − tercero; si es negativa: base/diezmo/tercero = 0 y el neto para mí es la pérdida en negativo. Filtro por mes, totales separados (ganancias/pérdidas/base/diezmo/tercero/neto), eliminar, exportar CSV/JSON e importar JSON validado sin duplicar. Corrige los bugs del V5: totales desde valores crudos, tasa 0/∞ (divisiones por cero), fechas reales y persistencia por dispositivo.
+4. **Comprobador**: `generatedAt` (UTC + Caracas), antigüedad, próximo run estimado (~5 min; Pages añade su propia demora), **SHA-256** del texto crudo (Web Crypto, local), enlaces (JSON crudo, commits de `data`, workflow), estado por fuente (HTTP + muestras), `diagnostics`, `meta`/`warnings` y **Ver insumos** (cross/variations/purchasingPower/promedios prettificados).
 
-- Política de caducidad: **5 minutos** (tasa P2P cambia rápido; 5 min equilibra frescura y carga).
-- Al volver la conexión se refresca automáticamente (`online` event).
-- Offline: se usan datos guardados y se **etiquetan** como caché con su hora; nunca se muestran como “en vivo”.
-- Sin datos utilizables: se informa que no puede calcularse; **no se genera un resultado falso**.
+La app consulta **únicamente** `raw.githubusercontent.com`; ni Binance, ni Bybit, ni el BCV son llamados desde el navegador.
 
----
-
-## 8. Formato export/import
+## 5. Formato de respaldo de operaciones
 
 ```json
 {
   "version": "1.0",
-  "exportedAt": "2026-01-01T10:00:00Z",
-  "calculations": [
+  "exportedAt": "2026-11-25T10:00:00Z",
+  "operations": [
     {
-      "fromCurrency": "VES", "toCurrency": "COP",
-      "amount": 10000, "commissionPct": 5,
-      "rateBuy": { "price": 1136.0, "source": "Binance" },
-      "rateSell": { "price": 3269.89, "source": "Bybit" },
-      "usdtGross": 8.8028, "usdtNet": 8.3627,
-      "resultAmount": 27345.03, "mode": "combined",
-      "timestamp": "2026-01-01T10:00:00Z"
+      "fecha": "2026-11-25", "origen": "PEN", "destino": "VES",
+      "sale": 25600, "saleRate": 1000, "entry": 95, "entryRate": 3.46,
+      "obs": "nombre/tope/nota", "tercero": false
     }
   ]
 }
 ```
 
-Import: valida esquema, monedas en lista blanca, números finitos, escapa textos, ignora duplicados (±0,1 %) y pide confirmación antes de combinar.
+Importación: monedas en lista blanca (`VES/PEN/COP/CLP/MXN/USD`), números finitos > 0, fechas `YYYY-MM-DD` válidas; duplicados (fecha + par + montos con ±0,01) se omiten tras confirmación.
 
----
+## 6. Regenerar producción / probar
 
-## 9. Rendimiento
-
-- Obtención de tasas: 24 llamadas en paralelo (6 monedas × 2 APIs × 2 lados) → ~3–6 s en red normal.
-- Cálculo local: < 1 ms.
-- Con caché válida: respuesta < 100 ms.
-- Objetivo de cálculo completo < 10 s: **cumplido** (medido por separado).
-
----
-
-## 10. Despliegue
-
-### Opción A — Sitio de usuario (recomendado, sin tocar Settings)
-1. Crear repo **público y vacío** llamado `afvelis.github.io`.
-2. Publicar el contenido de `dist/` en la raíz de `main`:
-   ```bash
-   cd webapp/dist
-   git init && git add . && git commit -m "ConsuTasas"
-   git branch -M main
-   git remote add origin git@github.com:afvelis/afvelis.github.io.git
-   git push -u origin main
-   ```
-3. URL: `https://afvelis.github.io/` (el sitio de usuario publica automáticamente).
-
-### Opción B — Proyecto (usada)
-Repo: `consutasas` (público).
-1. `dist/` publicado en la rama `gh-pages` (raíz).
-2. Pages: Source `gh-pages`, `/ (root)` — se publicó automáticamente.
-3. URL: `https://afvelis.github.io/consutasas/`.
-
-### Local
 ```bash
-cd webapp/dist && python3 -m http.server 8080   # http://localhost:8080
-# desarrollo con fuentes legibles:
-cd webapp && python3 -m http.server 8080         # http://localhost:8080
+cd webapp && ./build.sh          # genera dist/ (terser + CSS min)
+node test/run-tests.js           # pruebas: fórmula exacta, import, render 4 pestañas
+python3 -m http.server 8080 --directory dist   # http://localhost:8080
 ```
 
----
+## 7. Despliegue
 
-## 11. Evidencia de pruebas
+- **gh-pages** = contenido raíz de `webapp/dist/` (Source: gh-pages / (root)).
+- **main** = código fuente (`webapp/`, `README.md`) + bot (`scripts/`, `.github/`) + `rates.yml` corre contra `data`/`gh-pages` según su configuración.
 
-| Prueba | Resultado |
-|---|---|
-| Fórmula 3 pasos y 3 casos de contexto | ✅ (2 exactos; caso 1 difiere 1,64 Bs por redondeo intermedio del ejemplo) |
-| 30 rutas entre 6 monedas | ✅ |
-| Casos borde (monto 0/negativo, comisión 0/100, mismo par) | ✅ |
-| Sintaxis JS fuente y minificada (`node --check`) | ✅ |
-| HTML sin inline script/style/onclick | ✅ |
-| CSP aplicada | ✅ |
-| Export/Import JSON con validación y duplicados | ✅ |
-| Formato es-VE (miles/decimales) | ✅ |
-| API Binance/Bybit con datos reales | ✅ (sondeo en vivo de las 6 monedas) |
+## 8. Limitaciones
 
----
-
-## 12. Limitaciones
-
-- Tasas P2P son **indicativas**; no garantizan disponibilidad ni ejecución.
-- CORS de Bybit puede requerir proxy; si no hay fuente, se informa y no se calcula.
-- Datos históricos: máx. 100 registros por navegador.
-- Sin autenticación: la URL es pública (ver §1).
+- Tasas indicativas (P2P); no garantizan ejecución ni disponibilidad de anuncios.
+- El workflow corre ~cada 5 min, pero las Pages de GitHub pueden tardar unos minutos en refrescar.
+- Historial local, sin autenticación (URL pública por diseño — ver §2).
