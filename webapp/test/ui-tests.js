@@ -1,8 +1,10 @@
 /* Pruebas smoke del núcleo de UI v2 — Node puro con DOM simulado:
  * `node test/ui-tests.js`.
  * Cubre: arranque (CTEngine presente), pestañas + sessionStorage, render lazy,
- * chips de pares y los 4 modos por par (2 forward + 2 inversos, activos vía
- * caseQuote con target), cotización EXACTA vía CTEngine (PEN→VES 3700 →
+ * chips de pares y los 4 modos por par (estado inicial determinista VES/PEN +
+ * “Me depositan PEN → entrego Bs” con chip-active/mode-active, persistencia par+modo
+ * en storage y restauración al volver de otra pestaña, 100 PEN→VES = 29.228,57,
+ * USD/USD 320→305 con override), cotización EXACTA vía CTEngine (PEN→VES 3700 →
  * 1.081.457,14 con comisión 7 %), cotización y registro INVERSOS, USD/USD con
  * forward e inverso (Zelle 305 → 327,96), cuentas (primaria única), balance
  * (cuadre/patrimonio/pasivos), histórico (filtros/stats/cadena), migración
@@ -178,11 +180,26 @@ try {
   /* ---- chips de pares + modos ---- */
   CT.parts.casos();
   const chipsHtml = sandbox.document.getElementById('casos-chips').innerHTML;
+  const modosHtml0 = sandbox.document.getElementById('casos-modos').innerHTML;
   check('chips: 7 pares default + USD/USD',
     /VES\/PEN/.test(chipsHtml) && /PEN\/COP/.test(chipsHtml) && /COP\/CLP/.test(chipsHtml) && /USD\/USD \(Zelle\)/.test(chipsHtml));
   check('primer par seleccionado por defecto (VES/PEN)', CT.S.pairKey === 'VES/PEN');
+  check('modo inicial determinista = ba-fwd (Me depositan PEN → entrego Bs)', CT.S.modo && CT.S.modo.id === 'ba-fwd');
+  check('estado inicial activo: clase chip-active en el chip VES/PEN',
+    /chip-active" data-pair="VES\/PEN"/.test(chipsHtml), chipsHtml.slice(0, 300));
+  check('estado inicial activo: clase mode-active en el modo ba-fwd',
+    /mode-active" data-modo="ba-fwd"/.test(modosHtml0), modosHtml0.slice(0, 300));
+  check('label del input declara el depósito: Cliente deposita: PEN',
+    sandbox.document.getElementById('casos-monto-label').textContent === 'Cliente deposita: PEN',
+    sandbox.document.getElementById('casos-monto-label').textContent);
 
+  CT.selectPair('PEN/COP');
+  check('click de par: modo por defecto coherente (Cliente deposita: COP)',
+    CT.S.modo && CT.S.modo.id === 'ba-fwd' &&
+    sandbox.document.getElementById('casos-monto-label').textContent === 'Cliente deposita: COP',
+    sandbox.document.getElementById('casos-monto-label').textContent);
   CT.selectPair('VES/PEN');
+
   const modosHtml = sandbox.document.getElementById('casos-modos').innerHTML;
   check('4 modos por par (todos activos, sin “pendiente”)',
     (modosHtml.match(/data-modo/g) || []).length === 4 && (modosHtml.match(/disabled/g) || []).length === 0 &&
@@ -190,12 +207,28 @@ try {
   check('etiquetas de los 4 modos (2 forward + 2 inversas)',
     /Me depositan VES → entrego PEN/.test(modosHtml) && /Necesito PEN → me depositan VES/.test(modosHtml) &&
     /Me depositan PEN → entrego VES/.test(modosHtml) && /Necesito VES → me depositan PEN/.test(modosHtml));
-  check('modo activo = forward AB', CT.S.modo && CT.S.modo.id === 'ab-fwd');
+  check('modo activo tras click de par = ba-fwd (no forward AB)', CT.S.modo && CT.S.modo.id === 'ba-fwd');
   check('setModo activa el inverso AB (target)', CT.setModo('ab-rev') === true && CT.S.modo._fwd === false);
-  check('label del monto en inverso = objetivo a entregar',
-    sandbox.document.getElementById('casos-monto-label').textContent === 'Monto objetivo a entregar (PEN)');
+  check('label del monto en inverso = entrega objetivo (Tú entregas: PEN)',
+    sandbox.document.getElementById('casos-monto-label').textContent === 'Tú entregas: PEN (monto objetivo a entregar)');
   check('override deshabilitado en modo inverso del par', sandbox.document.getElementById('casos-override').disabled === true);
   check('setModo activa BA', CT.setModo('ba-fwd') === true && CT.S.modo.dir === 'BA');
+
+  /* ---- persistencia par+modo (storage) + retorno entre pestañas ---- */
+  check('selección del caso guardada en storage (par+modo)', (() => {
+    const rec = JSON.parse(ls.getItem('ct_caso') || ss.getItem('ct_caso') || 'null');
+    return !!rec && rec.pairKey === 'VES/PEN' && rec.modoId === 'ba-fwd';
+  })());
+  CT.S.pairKey = null; CT.S.modo = null;
+  CT.renderCasos();
+  check('restauración del caso desde el storage', CT.S.pairKey === 'VES/PEN' && CT.S.modo && CT.S.modo.id === 'ba-fwd');
+  check('clases activas re-aplicadas tras restaurar',
+    /chip-active" data-pair="VES\/PEN"/.test(sandbox.document.getElementById('casos-chips').innerHTML) &&
+    /mode-active" data-modo="ba-fwd"/.test(sandbox.document.getElementById('casos-modos').innerHTML));
+  CT.switchTab('tasas'); CT.switchTab('casos');
+  check('vuelta de Tasas: chip/modo siguen activos',
+    /chip-active" data-pair="VES\/PEN"/.test(sandbox.document.getElementById('casos-chips').innerHTML) &&
+    /mode-active" data-modo="ba-fwd"/.test(sandbox.document.getElementById('casos-modos').innerHTML));
 
   /* ---- cotización EXACTA vía CTEngine.caseQuote ---- */
   sandbox.document.getElementById('casos-monto').value = '3700';
@@ -210,6 +243,17 @@ try {
   check('aviso: promedio sin libro si no hay ads', /sin libro de anuncios/.test(resHtml));
   check('snapshot visible con generatedAt + fuente en vivo', /Snapshot:/.test(resHtml) && /fuente: en vivo/.test(resHtml));
   check('botón Registrar operación en el resultado', /data-action="registrar"/.test(resHtml));
+
+  /* ---- caso pedido por el bug: 100 PEN→Bs (VES) nunca sale invertido ---- */
+  sandbox.document.getElementById('casos-monto').value = '100';
+  CT.renderResultado();
+  const res100 = sandbox.document.getElementById('casos-resultado').innerHTML;
+  check('PEN→VES 100: entregas 29.228,57 Bs', res100.indexOf('29.228,57') >= 0, res100.slice(0, 400));
+  check('desglose declara moneda explícita: Cliente deposita: PEN / Tú entregas: VES',
+    /Cliente deposita: PEN/.test(res100) && /Tú entregas: VES/.test(res100) &&
+    !/Cliente deposita: VES/.test(res100) && !/Tú entregas: PEN/.test(res100));
+  sandbox.document.getElementById('casos-monto').value = '3700';
+  CT.renderResultado();
 
   /* ---- registro de la operación ---- */
   const st = CT.S.ledger;
@@ -289,7 +333,7 @@ try {
   check('inverso: muestra “Cliente deposita” con 3.700,00 PEN calculado', resRev.indexOf('3.700,00') >= 0 && /Cliente deposita/.test(resRev));
   check('inverso: entrega fijada = target (1.081.457,14 VES)', resRev.indexOf('1.081.457,14') >= 0);
   check('inverso: destacado (big) en “Cliente deposita”', (() => {
-    const m = resRev.match(/<span class="k">Cliente deposita<\/span><span class="v big/);
+    const m = resRev.match(/<span class="k">Cliente deposita: PEN<\/span><span class="v big/);
     return !!m;
   })());
   const movsBeforeRev = st.movements.length;
@@ -329,6 +373,20 @@ try {
     return m.in.currency === 'USD' && Math.abs(m.in.amount - 327.96) < 0.01 &&
       m.out.currency === 'USD' && m.out.amount === 305 && m.meta.case.reversed === true;
   })());
+
+  /* ---- USD/USD forward: 320 depositados → 305 de entrega exacta (override) ---- */
+  CT.selectPair('USD/USD');
+  check('click de par USD/USD: modo por defecto zelle-fwd', CT.S.modo && CT.S.modo.id === 'zelle-fwd');
+  sandbox.document.getElementById('casos-margin').value = '7';
+  sandbox.document.getElementById('casos-monto').value = '320';
+  sandbox.document.getElementById('casos-override').value = '305';
+  CT.renderResultado();
+  const resZf = sandbox.document.getElementById('casos-resultado').innerHTML;
+  check('USD/USD 320→305: entrega exacta 305,00 USD declarada (Tú entregas: USD)',
+    /Tú entregas: USD/.test(resZf) && resZf.indexOf('305,00') >= 0, resZf.slice(0, 400));
+  check('USD/USD 320→305: depósito declarado USD (Cliente deposita: USD 320,00)',
+    /Cliente deposita: USD/.test(resZf) && resZf.indexOf('320,00') >= 0);
+  sandbox.document.getElementById('casos-override').value = '';
 
   /* ---- par referencial EUR (customPair) ---- */
   st.settings.customPairs.push(['VES', 'EUR']);

@@ -162,6 +162,8 @@ main {
 }
 .btn:hover { border-color: var(--accent); }
 .btn-primary { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+/* Selección activa en Casos: chip de par (app.js renderChips) y modo (renderModos). */
+.chips .btn.chip-active, .chips .btn.mode-active { background: var(--accent2); border-color: var(--accent2); color: #fff; }
 .btn-big { width: 100%; margin-top: 10px; }
 .btn-small { min-height: 40px; padding: 6px 12px; font-size: 0.85rem; }
 .btn-danger { color: var(--bad); border-color: rgba(239,68,68,.4); }
