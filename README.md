@@ -6,6 +6,9 @@ Herramienta web (uso familiar) que calcula conversiones entre **VES, PEN, COP, C
 - Toda la lógica en `assets/app.js` y los estilos en `assets/styles.css`.
 - Producción minificada en `dist/` (nombres internos ofuscados).
 
+**🌐 En vivo:** https://afvelis.github.io/consutasas/  
+**📦 Repo:** https://github.com/afvelis/consutasas (público)
+
 ---
 
 ## 1. Seguridad y privacidad (leer)
@@ -184,11 +187,11 @@ Import: valida esquema, monedas en lista blanca, números finitos, escapa textos
    ```
 3. URL: `https://afvelis.github.io/` (el sitio de usuario publica automáticamente).
 
-### Opción B — Proyecto
-1. Crear repo público vacío `consultas-tasas`.
-2. Push de `dist/` a la rama `gh-pages`.
-3. Settings → Pages → Source: `gh-pages`, `/ (root)`.
-4. URL: `https://afvelis.github.io/consultas-tasas/`.
+### Opción B — Proyecto (usada)
+Repo: `consutasas` (público).
+1. `dist/` publicado en la rama `gh-pages` (raíz).
+2. Pages: Source `gh-pages`, `/ (root)` — se publicó automáticamente.
+3. URL: `https://afvelis.github.io/consutasas/`.
 
 ### Local
 ```bash
