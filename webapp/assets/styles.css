@@ -167,6 +167,20 @@ main {
 .btn-danger { color: var(--bad); border-color: rgba(239,68,68,.4); }
 .btn[disabled] { opacity: .5; cursor: not-allowed; }
 
+/* Spinner del botón Actualizar (assets/tasas.js: .is-busy durante el refresco) */
+.btn.is-busy::after {
+  content: '';
+  width: 14px;
+  height: 14px;
+  margin-left: 8px;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: ct-spin .8s linear infinite;
+}
+@keyframes ct-spin { to { transform: rotate(360deg); } }
+
 /* Formularios: controles grandes para el pulgar */
 label, .inlinelab, legend {
   display: block;

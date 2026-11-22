@@ -1,0 +1,470 @@
+/* ConsuTasas v2 — módulo Tasas + Comprobador (assets/tasas.js).
+ *
+ * Sobrescribe los placeholders `CT.renderTasas` / `CT.renderComprobador` del
+ * núcleo (app.js) y renderiza la pestaña "tasas" con el snapshot rates.json
+ * que app.js ya descargó y guardó en CT.S. Se ejecuta después de app.js
+ * (orden de <script defer> en index.html) y, si el snapshot ya está cargado,
+ * renderiza de inmediato; si no, la pestaña renderiza al abrirse/actualizar
+ * vía CT.parts.tasas.
+ *
+ * Regla dura: nunca se inventa una tasa. Valor ausente → '—' (CT.fmt) + aviso.
+ * Sin inline (CSP): todo el HTML pasa por esc(), los handlers van por
+ * addEventListener y el botón Actualizar se conecta vía el hook
+ * CT.onRefreshClick del núcleo.
+ */
+(function () {
+  'use strict';
+
+  const CT = globalThis.CT || (globalThis.CT = {});
+  const S = CT.S; // estado del núcleo (rates, fx, ledger, fetchedAt, fromCache, rawText)
+
+  function el(id) { return document.getElementById(id); }
+  const esc = CT.esc;
+  const fmt = CT.fmt;
+
+  const FIATS = (globalThis.CTEngine && globalThis.CTEngine.FIATS) || ['VES', 'PEN', 'COP', 'CLP', 'MXN'];
+
+  // Decimales por fiat (CLP sin centavos útiles).
+  function dec(code) { return code === 'CLP' ? 2 : 4; }
+
+  function num(v, d) { return '<span class="num">' + esc(fmt(v, d == null ? 2 : d)) + '</span>'; }
+
+  function signCls(pct) {
+    if (pct == null || !Number.isFinite(pct)) return '';
+    return pct > 0.0005 ? 'pos' : (pct < -0.0005 ? 'neg' : '');
+  }
+
+  function kvRow(k, vHtml, extraCls) {
+    return '<div class="kv"><span class="k">' + esc(k) + '</span>' +
+      '<span class="v' + (extraCls ? ' ' + esc(extraCls) : '') + '">' + vHtml + '</span></div>';
+  }
+
+  function kvGrid(rows) {
+    return '<div class="grid2">' + rows.join('') + '</div>';
+  }
+
+  function ageMin(iso) {
+    const t = new Date(iso).getTime();
+    if (isNaN(t)) return null;
+    return Math.max(0, (Date.now() - t) / 60000);
+  }
+
+  function formatUTC(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso == null ? '—' : iso);
+    const p = function (n) { return String(n).padStart(2, '0'); };
+    return String(d.getUTCFullYear()) + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()) +
+      ' ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ' UTC';
+  }
+
+  function hhmm(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    const p = function (n) { return String(n).padStart(2, '0'); };
+    return p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
+  }
+
+  function emptyCard(msg) {
+    return '<div class="card"><p class="warnline">⚠ ' + esc(msg || 'Sin snapshot de tasas. Pulsa Actualizar.') + '</p></div>';
+  }
+
+  // ==================== EUR referencial ====================
+
+  function renderEurRef(data) {
+    const holder = el('ta-eurref');
+    if (!holder) return;
+    const r = data && data.eurRef;
+    let aviso = '';
+    if (!r || typeof r !== 'object') {
+      aviso = '<p class="warnline">⚠ EUR referencial no publicado en este snapshot: EUR queda deshabilitado salvo tasa manual (card de config).</p>';
+    } else if (r.diffPct != null && Number.isFinite(r.diffPct) && r.diffPct > 2) {
+      aviso = '<p class="warnline">⚠ Diferencia del EUR referencial vs implícito (' + esc(fmt(r.diffPct, 2)) +
+        ' %) supera el 2 %: usar con cuidado.</p>';
+    }
+    holder.innerHTML = '<div class="card"><h2>EUR referencial</h2>' +
+      kvGrid([
+        kvRow('EUR por 1 USD', num(r && r.usd, 4), 'big'),
+        kvRow('Bs por 1 EUR', num(r && r.ves, 4), 'big'),
+        kvRow('Bs por 1 EUR (implícito)', num(r && r.vesImplicito, 4), 'num'),
+        kvRow('Dif. vs implícito', num(r && r.diffPct, 2) + ' %', signCls(r && r.diffPct) || 'num'),
+        kvRow('Fuente', esc((r && r.source) || '—')),
+        kvRow('Estado', esc((r && r.status) || '—')),
+        kvRow('Actualizado', esc(CT.fmtDate(r && r.fetchedAt, true)))
+      ]) +
+      '<p class="muted hint">Referencial oficial (Frankfurter/ECB). No se usan EUR de Binance/Bybit.</p>' +
+      aviso + '</div>';
+  }
+
+  // ==================== BCV ====================
+
+  function renderBcv(data) {
+    const holder = el('ta-bcv');
+    if (!holder) return;
+    if (!data) { holder.innerHTML = emptyCard(); return; }
+    const bcv = data.sources && data.sources.bcv;
+    const samples = bcv && bcv.samples;
+    holder.innerHTML = '<div class="card"><h2>Oficial BCV</h2>' +
+      kvGrid([
+        kvRow('USD', num(samples && samples.usd, 4), 'big'),
+        kvRow('EUR', num(samples && samples.eur, 4), 'big'),
+        kvRow('Estado de la fuente', esc((bcv && bcv.status) || '—')),
+        kvRow('Publicación BCV', esc((bcv && bcv.actualizado) || '—'))
+      ]) +
+      (samples && samples.usd != null && samples.eur != null
+        ? ''
+        : '<p class="warnline">⚠ BCV no publicó USD/EUR en este snapshot: se muestra «—», no se inventan tasas.</p>') +
+      '</div>';
+  }
+
+  // ==================== P2P USD→VES ====================
+
+  function renderP2p(data) {
+    const holder = el('ta-p2p');
+    if (!holder) return;
+    if (!data) { holder.innerHTML = emptyCard(); return; }
+    const plat = data.pairs && data.pairs.VES && (data.pairs.VES.porPlataforma || {});
+    const cross = (data.cross || {});
+    const rows = [];
+    [['binance', 'Binance', 'BCV USD → Binance VES'], ['bybit', 'Bybit', 'BCV USD → Bybit VES']]
+      .forEach(function (it) {
+        const d = plat[it[0]] || {};
+        const varPct = cross[it[2]] && cross[it[2]].pctVariacion;
+        rows.push(kvRow('Compra ' + it[1], num(d.compra, 4), 'num'));
+        rows.push(kvRow('Venta ' + it[1], num(d.venta, 4), 'num'));
+        rows.push(kvRow('Paralelo vs BCV (' + it[1] + ')', num(varPct, 2) + ' %', signCls(varPct) || 'num'));
+      });
+    holder.innerHTML = '<div class="card"><h2>P2P USD→Bs (Binance/Bybit)</h2>' + kvGrid(rows) +
+      (!plat.binance && !plat.bybit
+        ? '<p class="warnline">⚠ El snapshot no trae promedios por plataforma para VES.</p>'
+        : '') +
+      '</div>';
+  }
+
+  // ==================== Variaciones + poder adquisitivo ====================
+
+  function renderVariaciones(data) {
+    const holder = el('ta-variaciones');
+    if (!holder) return;
+    if (!data) { holder.innerHTML = emptyCard(); return; }
+    const vari = Array.isArray(data.variations) ? data.variations : [];
+    const pp = Array.isArray(data.purchasingPower) ? data.purchasingPower : [];
+    holder.innerHTML =
+      '<div class="card"><h2>Variaciones</h2>' +
+      (vari.length ? kvGrid(vari.map(function (v) {
+        return kvRow(v.name || '—', num(v.pct, 2) + ' %', signCls(v.pct) || 'num');
+      })) : '<p class="muted hint">—</p>') + '</div>' +
+      '<div class="card"><h2>Poder adquisitivo</h2>' +
+      (pp.length ? kvGrid(pp.map(function (v) {
+        return kvRow(v.name || '—', num(v.lossPct, 2) + ' % · ×' + num(v.factor, 4), 'neg');
+      })) : '<p class="muted hint">—</p>') + '</div>';
+  }
+
+  // ==================== Multi-par (VES/PEN/CLP/COP/MXN) ====================
+
+  function topAdLine(ads, code) {
+    if (!Array.isArray(ads) || !ads.length) return '—';
+    const a = ads[0]; // el bot ordena los ads: el primero es el mejor precio
+    return esc(fmt(a.price, dec(code)) + ' · min ' + fmt(a.min, 2) + ' · max ' + fmt(a.max, 2) +
+      ' · disp. ' + fmt(a.available, 2) + ' (' + esc(a.platform || '—') + ')');
+  }
+
+  function renderMultiPares(data) {
+    const holder = el('ta-multipares');
+    if (!holder) return;
+    if (!data) { holder.innerHTML = emptyCard(); return; }
+    const pairs = data.pairs || {};
+    const codes = (data.meta && Array.isArray(data.meta.fiats) && data.meta.fiats.length
+      ? data.meta.fiats : FIATS).filter(function (c) { return !!pairs[c]; });
+    let boards = '';
+    codes.forEach(function (code) {
+      const p = pairs[code] || {};
+      const ads = p.ads || {};
+      const nC = Array.isArray(ads.compra) ? ads.compra.length : 0;
+      const nV = Array.isArray(ads.venta) ? ads.venta.length : 0;
+      const m = p.muestras || {};
+      let html = '<div class="card"><h2>' + esc(code) + ' (USD→' + esc(code) + ')</h2>' +
+        kvGrid([
+          kvRow('Compra', num(p.compra, dec(code)), 'big'),
+          kvRow('Venta', num(p.venta, dec(code)), 'big'),
+          kvRow('Spread', num(p.spreadPct, 2) + ' %', signCls(p.spreadPct) || 'num'),
+          kvRow('Mejor compra', num(p.mejorCompra, dec(code)), 'num'),
+          kvRow('Mejor venta', num(p.mejorVenta, dec(code)), 'num'),
+          kvRow('Mejor spread', num(p.mejorSpreadPct, 2) + ' %', signCls(p.mejorSpreadPct) || 'num'),
+          kvRow('Muestras (total)', num(m.total != null ? m.total : (m.buy != null || m.sell != null ? (m.buy || 0) + (m.sell || 0) : null), 0), 'num'),
+          kvRow('Anuncios (compra/venta)', fmt(nC, 0) + ' / ' + fmt(nV, 0), 'num')
+        ]) +
+        '<div class="rowline"><span class="name">Mejor anuncio compra (top)</span><span class="val num">' + topAdLine(ads.compra, code) + '</span></div>' +
+        '<div class="rowline"><span class="name">Mejor anuncio venta (top)</span><span class="val num">' + topAdLine(ads.venta, code) + '</span></div>' +
+        '<p class="muted hint">' +
+        esc('muestras buy ' + fmt(m.buy, 0) + ' · sell ' + fmt(m.sell, 0)) +
+        '</p>' +
+        (p.status && p.status !== 'ok'
+          ? '<p class="warnline">⚠ Par ' + esc(code) + ' con estado «' + esc(p.status) + '».</p>'
+          : '') +
+        '</div>';
+      boards += html;
+    });
+    holder.innerHTML = boards || '<div class="card"><p class="warnline">⚠ El snapshot no trae pares multi-fiat.</p></div>';
+  }
+
+  // ==================== Detalle VES ====================
+
+  function renderVesDetalle(data) {
+    const holder = el('ta-vesdetalle');
+    if (!holder) return;
+    if (!data) { holder.innerHTML = ''; return; }
+    const vd = data.vesDetail;
+    if (!vd || typeof vd !== 'object') { holder.innerHTML = ''; return; }
+    const m = vd.muestras || {};
+    holder.innerHTML = '<div class="card"><h2>Detalle P2P VES</h2>' +
+      kvGrid([
+        kvRow('Compra total', num(vd.compraTotal, 4), 'num'),
+        kvRow('Venta total', num(vd.ventaTotal, 4), 'num'),
+        kvRow('Mejor compra', num(vd.mejorPrecioCompra, 4), 'num'),
+        kvRow('Mejor venta', num(vd.mejorPrecioVenta, 4), 'num'),
+        kvRow('Prom. compra págs. 1/2', num(vd.compraPromP1, 4) + ' / ' + num(vd.compraPromP2, 4), 'num'),
+        kvRow('Prom. venta págs. 1/2', num(vd.ventaPromP1, 4) + ' / ' + num(vd.ventaPromP2, 4), 'num'),
+        kvRow('Spread total / mejores', num(vd.spreadTotal, 2) + ' % / ' + num(vd.spreadMejores, 2) + ' %', 'num'),
+        kvRow('Muestras (compra · venta)', fmt(m.compra, 0) + ' · ' + fmt(m.venta, 0), 'num')
+      ]) + '</div>';
+  }
+
+  // ==================== Diagnóstico + avisos (compartido) ====================
+
+  function renderDiagnosticsShared(data, id) {
+    const holder = el(id);
+    if (!holder) return;
+    if (!data) { holder.innerHTML = emptyCard(); return; }
+    const dg = data.diagnostics || {};
+    const lines = Object.keys(dg).map(function (k) {
+      let v = dg[k];
+      if (v && typeof v === 'object') v = JSON.stringify(v);
+      const txt = typeof v === 'boolean' ? (v ? 'sí' : 'no') : v;
+      return '<div class="rowline"><span class="name">' + esc(k) + '</span><span class="val num">' +
+        esc(String(txt == null ? '—' : txt)) + '</span></div>';
+    });
+    const warns = (data.warnings || []).map(function (w) {
+      return '<p class="warnline">⚠ ' + esc(typeof w === 'string' ? w : JSON.stringify(w)) + '</p>';
+    });
+    holder.innerHTML = '<div class="card"><h2>Diagnóstico y avisos del bot</h2>' +
+      (lines.join('') || '<p class="muted hint">Sin diagnóstico publicado.</p>') +
+      warns.join('') + '</div>';
+  }
+
+  // ==================== Comprobador ====================
+
+  function renderComprobador() {
+    const data = S && S.rates;
+    if (!data) {
+      ['chk-fuegonacional', 'chk-momento', 'chk-integridad'].forEach(function (id) {
+        const e = el(id);
+        if (e) e.innerHTML = emptyCard('Comprobador sin snapshot: pulsa Actualizar.');
+      });
+      renderDiagnosticsShared(null, 'chk-diagnostico');
+      return;
+    }
+
+    // Origen + hash SHA-256 del archivo descargado (calculado con CTEngine.sha256Hex).
+    const fuego = el('chk-fuegonacional');
+    if (fuego) {
+      let hashTxt;
+      if (S.rawText && globalThis.CTEngine && typeof globalThis.CTEngine.sha256Hex === 'function') {
+        hashTxt = esc(globalThis.CTEngine.sha256Hex(S.rawText));
+      } else {
+        hashTxt = '— pulsa «Actualizar» para descargar y calcularlo (la copia de caché no conserva el texto crudo)';
+      }
+      fuego.innerHTML =
+        '<div class="rowline"><span class="name">Archivo del snapshot</span><span class="val mono">data/rates.json</span></div>' +
+        '<div class="rowline"><span class="name">Schema</span><span class="val mono">' + esc(data.schema || '—') + '</span></div>' +
+        '<div class="rowline"><span class="name">Integridad (SHA-256 del archivo descargado)</span><span class="val mono">' + hashTxt + '</span></div>';
+    }
+
+    // Momento + origen + eurRef.
+    const momento = el('chk-momento');
+    if (momento) {
+      const age = ageMin(data.generatedAt);
+      const cacheMin = S.fromCache && S.fetchedAt ? Math.floor(ageMin(S.fetchedAt) || 0) : null;
+      const eur = data.eurRef;
+      momento.innerHTML =
+        '<div class="rowline"><span class="name">Generado (UTC)</span><span class="val num">' + esc(formatUTC(data.generatedAt)) + '</span></div>' +
+        '<div class="rowline"><span class="name">Generado (Caracas)</span><span class="val num">' +
+        esc(data.generatedAtCaracas ? String(data.generatedAtCaracas).replace('T', ' ').slice(0, 19) : '—') + '</span></div>' +
+        '<div class="rowline"><span class="name">Antigüedad del snapshot</span><span class="val num">' +
+        esc(age != null ? fmt(age, 1) + ' min' : '—') + '</span></div>' +
+        '<div class="rowline"><span class="name">Origen de lo que ves</span><span class="val' +
+        (S.fromCache ? ' neg' : '') + '">' +
+        esc(S.fromCache ? 'copia guardada hace ' + fmt(cacheMin, 0) + ' min' : 'en vivo') + '</span></div>' +
+        '<div class="rowline"><span class="name">EUR referencial</span><span class="val num">' +
+        esc((eur && eur.source ? eur.source : '—') + ' · estado ' + (eur && eur.status ? eur.status : '—') +
+          ' · dif. ' + (eur && eur.diffPct != null ? fmt(eur.diffPct, 2) + ' %' : '—')) + '</span></div>';
+    }
+
+    // Integridad del libro mayor (cadena de hashes).
+    const integ = el('chk-integridad');
+    if (integ) {
+      const eng = globalThis.CTEngine;
+      if (S.ledger && eng && typeof eng.verifyChain === 'function') {
+        const ok = eng.verifyChain(S.ledger.movements);
+        const head = typeof eng.chainHead === 'function' ? eng.chainHead(S.ledger.movements) : null;
+        integ.innerHTML = '<p class="' + (ok ? 'hint muted' : 'warnline') + '">' +
+          (ok ? '✔' : '⚠') + ' Cadena de hashes del libro mayor: ' + (ok ? 'íntegra' : 'ALTERADA') +
+          ' · ' + esc(fmt(S.ledger.movements.length, 0)) + ' movimientos' +
+          (head ? ' · cabeza ' + esc(String(head).slice(0, 12)) + '…' : '') + '</p>';
+      } else {
+        integ.innerHTML = '<p class="hint muted">Libro mayor no disponible en este estado.</p>';
+      }
+    }
+
+    // Fuentes: estado, HTTP y muestras por fuente + estructura del snapshot.
+    const fuentes = el('chk-fuentes');
+    if (fuentes) {
+      const meta = data.meta || {};
+      const sources = data.sources || {};
+      const srcHtml = Object.keys(sources).map(function (k) {
+        const s = sources[k] || {};
+        let muestra = '—';
+        if (s.samples && typeof s.samples === 'object') {
+          muestra = Object.keys(s.samples).map(function (kk) {
+            return esc(kk + ' ' + fmt(s.samples[kk], 0));
+          }).join(' · ');
+        }
+        return '<div class="rowline"><span class="name">' + esc(k) + ' · estado ' + esc(s.status || '—') +
+          ' · HTTP ' + esc(s.http != null ? String(s.http) : '—') + '</span><span class="val num">' + muestra + '</span></div>';
+      }).join('');
+      fuentes.innerHTML = '<div class="card"><h2>Fuentes y estructura</h2>' +
+        '<div class="rowline"><span class="name">Pares publicados (meta.fiats)</span><span class="val num">' +
+        esc((meta.fiats || FIATS).join(' · ')) + '</span></div>' +
+        '<div class="rowline"><span class="name">Páginas P2P / filas por página (meta)</span><span class="val mono">' +
+        esc(meta.pages != null ? meta.pages + ' págs. × ' + (meta.rows != null ? meta.rows : '—') + ' filas' : '—') +
+        '</span></div>' +
+        (srcHtml || '<p class="muted hint">Sin detalle de fuentes.</p>') +
+        '</div>';
+    }
+
+    renderDiagnosticsShared(data, 'chk-diagnostico');
+  }
+
+  // ==================== Botón Actualizar (spinner + feedback) ====================
+
+  // Conectado desde app.js vía el hook CT.onRefreshClick (bindRefresh delega aquí).
+  // Deshabilita el botón 8 s, muestra spinner y un feedback honesto del resultado.
+  CT.onRefreshClick = async function () {
+    const btn = el('btn-refresh');
+    const label = el('btn-refresh-label');
+    if (!btn || btn.disabled) return;
+    const prevGen = S && S.rates && S.rates.generatedAt;
+    btn.disabled = true;
+    if (btn.classList.add) btn.classList.add('is-busy');
+    if (label) label.textContent = 'Actualizando…';
+    try {
+      await CT.refreshRates(true);
+      const gen = S && S.rates && S.rates.generatedAt;
+      if (S && S.fromCache) {
+        CT.toast('Error al actualizar: usando copia guardada (último ' + hhmm(prevGen) + ').');
+      } else if (gen && gen !== prevGen) {
+        CT.toast('Nuevo snapshot ' + hhmm(gen) + ' UTC.');
+      } else {
+        CT.toast('Sin cambios (último ' + hhmm(gen || prevGen) + ' UTC).');
+      }
+    } catch (e) {
+      CT.toast('Error al actualizar: usando copia guardada.');
+    } finally {
+      // El botón queda deshabilitado 8 s aunque la red responda antes (anti-spam).
+      setTimeout(function () {
+        btn.disabled = false;
+        if (btn.classList.remove) btn.classList.remove('is-busy');
+        if (label) label.textContent = 'Actualizar';
+      }, 8000);
+    }
+  };
+
+  // ==================== Panel Comprobador: toggle ====================
+
+  function bindChkToggle() {
+    const btn = el('chk-toggle');
+    if (!btn || btn.dataset.bound) return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', function () {
+      const panel = el('tab-comprobador-panel');
+      if (!panel) return;
+      panel.hidden = !panel.hidden;
+      btn.textContent = panel.hidden ? 'Comprobador' : 'Ocultar comprobador';
+    });
+  }
+
+  // ==================== Config de la pestaña Tasas ====================
+
+  function pctFrom(input) {
+    const v = parseFloat(input && input.value);
+    return Number.isFinite(v) && v >= 0 && v <= 100 ? v : null;
+  }
+
+  function loadConfig() {
+    if (!S.ledger) return;
+    const st = S.ledger.settings;
+    const fill = function (id, val) {
+      const e = el(id);
+      if (e && e.dataset.filled !== '1') { e.dataset.filled = '1'; e.value = val != null ? String(val) : ''; }
+    };
+    fill('cfg-comision', st.commissionDefault != null ? st.commissionDefault * 100 : '');
+    fill('cfg-comision-cop', st.commissionCop != null ? st.commissionCop * 100 : '');
+    fill('cfg-zelle', st.zelleMargin != null ? st.zelleMargin * 100 : '');
+    const m = CT.readManualEur ? CT.readManualEur() : { eurUsd: null, eurVes: null };
+    fill('cfg-eur-usd', m.eurUsd);
+    fill('cfg-eur-ves', m.eurVes);
+  }
+
+  function saveConfig() {
+    const eng = globalThis.CTEngine;
+    if (!S.ledger || !eng) { CT.toast('Config no disponible sin libro cargado.'); return; }
+    const st = S.ledger.settings;
+    const def = pctFrom(el('cfg-comision'));
+    const cop = pctFrom(el('cfg-comision-cop'));
+    const zelle = pctFrom(el('cfg-zelle'));
+    if (def != null) st.commissionDefault = def / 100;
+    if (cop != null) st.commissionCop = cop / 100;
+    if (zelle != null) st.zelleMargin = zelle / 100;
+    const eu = parseFloat(el('cfg-eur-usd') && el('cfg-eur-usd').value);
+    const ev = parseFloat(el('cfg-eur-ves') && el('cfg-eur-ves').value);
+    CT.saveManualEur(Number.isFinite(eu) && eu > 0 ? eu : null, Number.isFinite(ev) && ev > 0 ? ev : null);
+    eng.save(S.ledger);
+    CT.toast('Config guardada.');
+  }
+
+  function bindConfig() {
+    const btn = el('cfg-guardar');
+    if (!btn || btn.dataset.bound) return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', saveConfig);
+  }
+
+  // ==================== Render principal ====================
+
+  function renderTasas() {
+    const data = S && S.rates;
+    loadConfig();
+    renderEurRef(data);
+    renderBcv(data);
+    renderP2p(data);
+    renderVariaciones(data);
+    renderMultiPares(data);
+    renderVesDetalle(data);
+    renderDiagnosticsShared(data, 'ta-diagnostico');
+    bindChkToggle();
+    bindConfig();
+  }
+
+  function renderAll() {
+    renderTasas();
+    renderComprobador();
+  }
+
+  CT.renderTasas = renderTasas;
+  CT.renderComprobador = renderComprobador;
+
+  // Si el snapshot ya está cargado (app.js corrió antes), renderiza de inmediato;
+  // si no, la pestaña renderiza al abrirse o al actualizar (CT.parts.tasas).
+  if (S && S.rates) {
+    try { renderAll(); } catch (e) { /* app.js mostrará el error vía renderTab */ }
+  }
+})();
