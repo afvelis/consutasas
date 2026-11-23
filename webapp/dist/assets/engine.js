@@ -402,6 +402,398 @@
     return res;
   }
 
+  // ==================== Motor de escenarios de tasa (panel) ====================
+
+  /* Busca la mejor tasa de un anuncio para fiat/side dado un amountUsd.
+   * Filtra: min <= amountUsd*price <= max  y  available >= amountUsd.
+   * mode='best' → compra = min(price), venta = max(price).
+   * mode='average' → media FX de unitsPerUsdCompra/Venta del fiat.
+   * mode='conservative' → compra = max(price), venta = min(price).
+   * Fallback: ads vacías → media FX; filtrado vacío → null.
+   * Devuelve {rate, ad, source, mode} o null si no hay ads y no hay fallback.
+   * `rate` es en unitsPerUsd (compra) o (venta).
+   * `ads` = array de {price, min, max, available, platform} o null (usa media FX).
+   */
+  function adRateAt(fx, fiat, side, amountUsd, mode, ads) {
+    if (!fiat || !side || !amountUsd || !mode) return null;
+    var origAds = Array.isArray(ads) ? ads : [];
+    var adsArr = [];
+
+    // Filtrar ads ejecutables para el monto dado
+    for (var _i = 0; _i < origAds.length; _i++) {
+      var a = origAds[_i];
+      var _price = num(a.price);
+      var _avail = finitePositive(a.available);
+      var _min = num(a.min);
+      var _max = num(a.max);
+      if (_price == null || _avail == null) continue;
+      var _cost = amountUsd * _price;
+      if (_min != null && _cost < _min) continue;
+      if (_max != null && _cost > _max) continue;
+      if (_avail < amountUsd) continue;
+      adsArr.push(a);
+    }
+
+    if (mode === 'best') {
+      if (Array.isArray(adsArr) && adsArr.length) {
+        var r = finitePositive(adsArr[0] && adsArr[0].price);
+        if (r == null) return null;
+        return { rate: r, ad: adsArr[0], source: 'ad_best_' + side, mode: mode };
+      }
+      // Si original era vacío → media FX; si se filtró todo → null
+      if (origAds.length === 0) {
+        var buyR = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[fiat];
+        var sellR = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[fiat];
+        if (side === 'compra') {
+          var rB = finitePositive(buyR);
+          if (rB == null) return null;
+          return { rate: rB, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
+        } else {
+          var rS = finitePositive(sellR);
+          if (rS == null) return null;
+          return { rate: rS, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
+        }
+      }
+      return null;
+    }
+
+    if (mode === 'conservative') {
+      if (Array.isArray(adsArr) && adsArr.length) {
+        var r2 = finitePositive(adsArr[adsArr.length - 1] && adsArr[adsArr.length - 1].price);
+        if (r2 == null) return null;
+        return { rate: r2, ad: adsArr[adsArr.length - 1], source: 'ad_conservative_' + side, mode: mode };
+      }
+      if (origAds.length === 0) {
+        var buyR = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[fiat];
+        var sellR = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[fiat];
+        if (side === 'compra') {
+          var rC = finitePositive(buyR);
+          if (rC == null) return null;
+          return { rate: rC, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
+        } else {
+          var rD = finitePositive(sellR);
+          if (rD == null) return null;
+          return { rate: rD, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
+        }
+      }
+      return null;
+    }
+
+    // average: media FX de unitsPerUsdCompra/Venta (spec)
+    if (mode === 'average') {
+      var buyRA = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[fiat];
+      var sellRA = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[fiat];
+      if (side === 'compra') {
+        var rA = finitePositive(buyRA);
+        if (rA != null) return { rate: rA, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: 'average' };
+      } else {
+        var rB = finitePositive(sellRA);
+        if (rB != null) return { rate: rB, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: 'average' };
+      }
+    }
+    // fallback final: media FX
+    var buyR = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[fiat];
+    var sellR = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[fiat];
+    if (side === 'compra') {
+      var rF = finitePositive(buyR);
+      if (rF == null) return null;
+      return { rate: rF, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
+    } else {
+      var rG = finitePositive(sellR);
+      if (rG == null) return null;
+      return { rate: rG, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
+    }
+  }
+
+  /* Calcula los tres escenarios (best/average/conservative) para origen y destino.
+   * Devuelve { best: { originRate, destRate, originAd, destAd }, average: {...}, conservative: {...} }.
+   * `pair` = ['A','B'], `direction` = 'AB' | 'BA'.
+   * `rateMode` indica qué side usar (compra/venta).
+   * El 2% NO va aquí; es parámetro de cotización.
+   */
+  function rateScenarios(settings, fx, pair, direction, amount, rateMode, adsPair) {
+    if (!pair || !direction || !rateMode) return { best: {}, average: {}, conservative: {} };
+    var dir = direction === 'BA' ? 'BA' : 'AB';
+    var curA = dir === 'AB' ? pair[0] : pair[1];
+    var curB = dir === 'AB' ? pair[1] : pair[0];
+    // El origen siempre usa compra (se compra USD con la moneda origen),
+    // el destino siempre usa venta (se vende USD por la moneda destino).
+    // `rateMode` se pasa solo para coherencia de API pero siempre es 'compra'.
+    var originSide = 'compra';
+    var destSide = 'venta';
+    var scenarios = { best: {}, average: {}, conservative: {} };
+
+    // Obtener ads desde fx.pairs si están disponibles
+    var adsA, adsB;
+    if (fx && fx.pairs && fx.pairs[curA] && fx.pairs[curA].ads) {
+      adsA = fx.pairs[curA].ads;
+      adsB = (fx.pairs[curB] && fx.pairs[curB].ads) || [];
+    } else if (fx && fx.pairs) {
+      adsA = (fx.pairs[curA] && fx.pairs[curA].ads) || [];
+      adsB = (fx.pairs[curB] && fx.pairs[curB].ads) || [];
+    } else if (adsPair && adsPair[curA] && adsPair[curB]) {
+      // ads explícitos: { currency: { side: [ads] } } o { currency: [flatAds] } side=originSide
+      var aSideObj = adsPair[curA];
+      if (Array.isArray(aSideObj)) {
+        adsA = aSideObj;
+      } else if (aSideObj && aSideObj[originSide]) {
+        adsA = aSideObj[originSide];
+      } else {
+        adsA = [];
+      }
+      var bSideObj = adsPair[curB];
+      if (Array.isArray(bSideObj)) {
+        adsB = bSideObj;
+      } else if (bSideObj && bSideObj[destSide]) {
+        adsB = bSideObj[destSide];
+      } else {
+        adsB = [];
+      }
+    } else {
+      // fx no tiene pairs (buildFx estándar) → fallback media
+      adsA = adsB = [];
+    }
+
+    // best
+    var aBestO = adRateAt(fx, curA, originSide, amount, 'best', adsA);
+    var aBestD = adRateAt(fx, curB, destSide, amount, 'best', adsB);
+    if (aBestO && aBestD) {
+      scenarios.best.originRate = aBestO.rate;
+      scenarios.best.destRate = aBestD.rate;
+      scenarios.best.originAd = aBestO;
+      scenarios.best.destAd = aBestD;
+    }
+    // average
+    var aAvgO = adRateAt(fx, curA, originSide, amount, 'average', adsA);
+    var aAvgD = adRateAt(fx, curB, destSide, amount, 'average', adsB);
+    if (aAvgO && aAvgD) {
+      scenarios.average.originRate = aAvgO.rate;
+      scenarios.average.destRate = aAvgD.rate;
+      scenarios.average.originAd = aAvgO;
+      scenarios.average.destAd = aAvgD;
+    }
+    // conservative
+    var aConsO = adRateAt(fx, curA, originSide, amount, 'conservative', adsA);
+    var aConsD = adRateAt(fx, curB, destSide, amount, 'conservative', adsB);
+    if (aConsO && aConsD) {
+      scenarios.conservative.originRate = aConsO.rate;
+      scenarios.conservative.destRate = aConsD.rate;
+      scenarios.conservative.originAd = aConsO;
+      scenarios.conservative.destAd = aConsD;
+    }
+    return scenarios;
+  }
+
+  /* Cotización basada en escenarios del panel (motor de escenarios).
+   * Nuevos parámetros en `req`:
+   *   originMode   – 'best'|'average'|'conservative' (default: 'best')
+   *   destMode     – igual (default: 'best')
+   *   vesSafetyPct – safety sobre tasa VES (default: 0.02). 0 = sin 2%.
+   *   destSafetyPct – safety sobre tasa destino (default: 0.02).
+   *   commissionPct – reemplaza settings.commissionDefault/COP (default: undefined).
+   *   terceroOn    – true/false (default: settings.tercero > 0).
+   *
+   * Fórmulas:
+   *   PEN→VES:  USDT = PEN / compra_PEN · (1-5%);  net = USDT·(1-5%);
+   *             destRate = venta_VES·(1-2%);  delivered = net·destRate.
+   *   VES→otro: rateVES = compra_VES·(1+2%);
+   *             USDT = VES/rateVES;  net = USDT·(1-5%);
+   *             destRate = venta_dest·(1-2%);  delivered = net·destRate.
+   *   2% configurable a 0; si VES no interviene, no aplica el 2% VES.
+   *   El destino no-VES en VES→otro lleva destSafetyPct (resta).
+   *   Profit al mercado (best venta) para exponer seguridad.
+   */
+  function caseQuoteScenario(settings, fx, req) {
+    var pair = req && req.pair;
+    if (!Array.isArray(pair) || pair.length !== 2) return { ok: false, error: 'Par inválido.' };
+    if (pair[0] === pair[1]) return { ok: false, error: 'Origen y destino iguales.' };
+
+    var dir = req.direction === 'BA' ? 'BA' : 'AB';
+    var origin = dir === 'AB' ? pair[0] : pair[1];
+    var dest = dir === 'AB' ? pair[1] : pair[0];
+
+    // Parámetros con defaults
+    var originMode = req.originMode || 'best';
+    var destMode = req.destMode || 'best';
+    var vesSafetyPct = req.vesSafetyPct != null ? req.vesSafetyPct : 0.02;
+    var destSafetyPct = req.destSafetyPct != null ? req.destSafetyPct : 0.02;
+    var refAmount = req.referenceAmountUsd != null ? num(req.referenceAmountUsd) : 10;
+    var useActual = !!req.useActualAmount;
+    // Si deposit > 0, usar el monto real; si no, usar referenceAmountUsd (default 10)
+    var depositVal = (num(req.deposit) || 0) > 0 ? num(req.deposit) : refAmount;
+    if (useActual) depositVal = (req.deposit != null && num(req.deposit) != null) ? num(req.deposit) : depositVal;
+    if (depositVal <= 0) return { ok: false, error: 'Monto inválido.' };
+    var commissionPct = req.commissionPct != null ? num(req.commissionPct) : null;
+    var terceroOn = req.terceroOn != null ? req.terceroOn : (settings.tercero > 0);
+
+    // Bootstrap con media FX (sin filtro de ads) para derivar rates y amountUsd.
+    // La segunda pasada en [reversed] refinará con ads reales.
+    var rateOriginMedia = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[origin] != null
+      ? fx.unitsPerUsdCompra[origin] : null;
+    var rateDestMedia = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[dest] != null
+      ? fx.unitsPerUsdVenta[dest] : null;
+    if (!rateOriginMedia || !rateDestMedia) {
+      return { ok: false, error: 'Sin tasas FX para las monedas del par.' };
+    }
+
+    // amountUsd: USD equivalente para rateScenarios (si depositVal es fiat origen, derivar USD).
+    var amountUsd = depositVal / rateOriginMedia;
+
+    // Obtener escenario de tasa con amountUsd (USD) — fallback a media cuando ads están filtrados.
+    var scenarios = rateScenarios(settings, fx, pair, dir, amountUsd, 'compra');
+    var om = originMode || 'best';
+    var dm = destMode || 'best';
+    var sOrig = scenarios[om] || scenarios['best'] || {};
+    var sDest = scenarios[dm] || scenarios['best'] || {};
+
+    // Si el escenario elegido no tiene rates (ads filtrados), usar media FX como base.
+    if (!sOrig.originRate || !sDest.destRate) {
+      sOrig.originRate = rateOriginMedia;
+      sOrig.originAd = null;
+      sDest.destRate = rateDestMedia;
+      sDest.destAd = null;
+      // Guardar media para el escenario elegido
+      scenarios[om] = sOrig;
+      scenarios[dm] = sDest;
+    }
+
+    // Effective rates con safety PCT VES
+    var rateOrigin, rateDest;
+    var isVESOrigin = origin === 'VES';
+    var isVESDest = dest === 'VES';
+
+    // vesSafetyPct solo si VES interviene (origen o destino)
+    rateOrigin = isVESOrigin
+      ? sOrig.originRate * (1 + vesSafetyPct)
+      : sOrig.originRate;
+    // destSafetyPct solo si VES interviene (origen o destino)
+    rateDest = (isVESOrigin || isVESDest)
+      ? sDest.destRate * (1 - destSafetyPct)
+      : sDest.destRate;
+
+    var commPct = (commissionPct != null && (typeof commissionPct === 'number') && commissionPct >= 0) ? commissionPct : commissionFor(settings, origin);
+    var reversed = !!req.reversed;
+    var target = reversed ? num(req.target) : null;
+
+    if (reversed && target != null && target > 0) {
+      // INVERSO: target fijado — primera pasada (con depositVal = referenceAmountUsd)
+      var netUsd = target / rateDest;
+      var grossUsd0 = netUsd / (1 - commPct);
+      var deposit0 = round2(grossUsd0 * rateOrigin);
+      var amountUsd2 = deposit0 / rateOrigin;
+      // Segunda pasada con el depósito calculado
+      var sc2 = rateScenarios(settings, fx, pair, dir, amountUsd2, 'compra');
+      var sO2 = sc2[om] || sc2['best'] || {}, sD2 = sc2[dm] || sc2['best'] || {};
+      if (sO2.originRate && sD2.destRate) {
+        scenarios = sc2;
+        sOrig = sO2; sDest = sD2;
+        rateOrigin = isVESOrigin
+          ? sOrig.originRate * (1 + vesSafetyPct)
+          : sOrig.originRate;
+        rateDest = (isVESOrigin || isVESDest)
+          ? sDest.destRate * (1 - destSafetyPct)
+          : sDest.destRate;
+      }
+      var grossUsd = (target / rateDest) / (1 - commPct);
+      var deposit = round2(grossUsd * rateOrigin);
+      var delivered = round2(target);
+      var netUsd2 = target / rateDest;
+      var profit = round2(grossUsd - netUsd2);
+      var base = Math.max(profit, 0);
+      var diezmo = round2(base * settings.diezmo);
+      var tercero = terceroOn ? round2(base * settings.tercero) : 0;
+
+      // marketRate: cross (dest/origen) del mejor escenario
+      var mBest = scenarios.best;
+      var marketRate = (mBest && mBest.destRate && mBest.originRate)
+        ? mBest.destRate / mBest.originRate : rateDest;
+      var quotedRate = round2(rateDest / rateOrigin);
+
+      return {
+        ok: true, kind: 'scenario', pair: pair.slice(), direction: dir,
+        currencyIn: origin, currencyOut: dest,
+        deposit: deposit, delivered: delivered, grossUsd: grossUsd,
+        commission: commPct, commissionPct: round2(commPct * 100),
+        overridden: false, reversed: true, referencial: (origin === 'EUR' || dest === 'EUR'),
+        grossProfit: profit, profitUsd: profit, base: base, diezmo: diezmo, tercero: tercero,
+        neto: round2(profit - diezmo - tercero),
+        scenario: {
+          originMode: originMode, destMode: destMode,
+          vesSafetyPct: vesSafetyPct, destSafetyPct: destSafetyPct
+        },
+        rateInfo: {
+          originScenarios: scenarios,
+          destScenarios: scenarios,
+          adUsed: sOrig.originAd,
+          originRate: rateOrigin, destRate: rateDest,
+          quotedRate: quotedRate,
+          effectiveRate: round2(delivered / deposit),
+          marketRate: marketRate,
+          profitCommission: profit,
+          profitSafety: round2(deposit * (marketRate - quotedRate)),
+          safetyPct: (isVESOrigin ? vesSafetyPct : 0) + (isVESDest || isVESOrigin ? destSafetyPct : 0)
+        }
+      };
+    }
+
+    // FORWARD: deposit dado — segunda pasada con monto en USD (amountUsd)
+    if (!depositVal || depositVal <= 0) return { ok: false, error: 'Monto inválido.' };
+    var amountUsd2 = depositVal / rateOrigin;
+    var sc2 = rateScenarios(settings, fx, pair, dir, amountUsd2, 'compra');
+    var sO2 = sc2[om] || sc2['best'] || {}, sD2 = sc2[dm] || sc2['best'] || {};
+    if (sO2.originRate && sD2.destRate) {
+      scenarios = sc2;
+      sOrig = sO2; sDest = sD2;
+      rateOrigin = isVESOrigin
+        ? sOrig.originRate * (1 + vesSafetyPct)
+        : sOrig.originRate;
+      rateDest = (isVESOrigin || isVESDest)
+        ? sDest.destRate * (1 - destSafetyPct)
+        : sDest.destRate;
+    }
+    var grossUsd = depositVal / rateOrigin;
+    var netUsd = grossUsd * (1 - commPct);
+    var delivered = round2(netUsd * rateDest);
+    if (!(delivered > 0)) return { ok: false, error: 'Monto demasiado bajo.' };
+    var profit = round2(grossUsd - netUsd);
+    var base = Math.max(profit, 0);
+    var diezmo = round2(base * settings.diezmo);
+    var tercero = terceroOn ? round2(base * settings.tercero) : 0;
+
+    // marketRate: cross (dest/origen) del mejor escenario
+    var mBest = scenarios.best;
+    var marketRate = (mBest && mBest.destRate && mBest.originRate)
+      ? mBest.destRate / mBest.originRate : rateDest;
+    var quotedRate = round2(rateDest / rateOrigin);
+
+    return {
+      ok: true, kind: 'scenario', pair: pair.slice(), direction: dir,
+      currencyIn: origin, currencyOut: dest,
+      deposit: depositVal, delivered: delivered, grossUsd: grossUsd,
+      commission: commPct, commissionPct: round2(commPct * 100),
+      overridden: false, reversed: false, referencial: (origin === 'EUR' || dest === 'EUR'),
+      grossProfit: profit, profitUsd: profit, base: base, diezmo: diezmo, tercero: tercero,
+      neto: round2(profit - diezmo - tercero),
+      scenario: {
+        originMode: originMode, destMode: destMode,
+        vesSafetyPct: vesSafetyPct, destSafetyPct: destSafetyPct,
+        referenceAmountUsd: refAmount, useActualAmount: useActual
+      },
+      rateInfo: {
+        originScenarios: scenarios,
+        destScenarios: scenarios,
+        adUsed: sOrig.originAd,
+        originRate: rateOrigin, destRate: rateDest,
+        quotedRate: quotedRate,
+        effectiveRate: round2(delivered / depositVal),
+        marketRate: marketRate,
+        profitCommission: profit,
+        profitSafety: round2(depositVal * (marketRate - quotedRate)),
+        safetyPct: (isVESOrigin ? vesSafetyPct : 0) + (isVESDest || isVESOrigin ? destSafetyPct : 0)
+      }
+    };
+  }
+
   // ==================== Casos (comisión 7%/8%, USD/USD, EUR referencial) ====================
 
   function commissionFor(settings, currencyIn) {
@@ -882,6 +1274,9 @@
     buildFx: buildFx,
     fxWarnings: fxWarnings,
     walkBook: walkBook,
+    adRateAt: adRateAt,
+    rateScenarios: rateScenarios,
+    caseQuoteScenario: caseQuoteScenario,
     commissionFor: commissionFor,
     caseQuote: caseQuote,
     executeCase: executeCase,
