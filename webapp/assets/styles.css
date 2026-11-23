@@ -344,6 +344,37 @@ details summary { cursor: pointer; color: var(--accent); font-size: 0.88rem; }
 .chklinks { margin: 12px 0; word-break: break-word; }
 .chklinks a { color: var(--accent); }
 
+/* Indicadores de cambio en tasas */
+.rate-up {
+  color: var(--good, #34d399);
+  font-weight: 600;
+}
+.rate-down {
+  color: var(--bad, #f87171);
+  font-weight: 600;
+}
+.rate-flash {
+  animation: rate-flash 0.6s ease;
+}
+@keyframes rate-flash {
+  0% { opacity: 1; }
+  30% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+#bot-status-container {
+  font-size: 0.8rem;
+}
+#bot-status-container a {
+  color: var(--accent);
+}
+
 @media (min-width: 480px) {
   .kv .v.big { font-size: 1.5rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rate-flash {
+    animation-duration: 0.05s;
+  }
 }

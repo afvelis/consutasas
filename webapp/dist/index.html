@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://raw.githubusercontent.com; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; worker-src 'self' blob:; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://raw.githubusercontent.com https://api.github.com; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; worker-src 'self' blob:; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="robots" content="noindex, nofollow">
   <meta name="description" content="ConsuTasas v2: casos P2P (VES/PEN/COP/CLP/MXN/EUR) con libro mayor local (cuentas, balance, histórico con cadena de hashes) sobre el snapshot rates.json del bot.">
   <title>ConsuTasas</title>
@@ -17,6 +17,7 @@
     <h1>ConsuTasas</h1>
     <span id="badge-frescura" class="badge badge-wait" role="status">Cargando…</span>
     <span id="hora-caracas" class="muted"></span>
+    <div id="bot-status-container" class="muted" hidden></div>
   </header>
 
   <div id="banner" class="banner" hidden></div>
@@ -225,6 +226,7 @@
         <a class="btn" href="https://github.com/afvelis/consutasas/actions/workflows/rates.yml"
            target="_blank" rel="noopener noreferrer">Forzar bot</a>
       </div>
+      <div id="refresh-label-info" class="muted hint" hidden></div>
       <div id="ta-eurref"></div>
       <div id="ta-bcv" aria-label="Tasas BCV"></div>
       <div id="ta-p2p" aria-label="P2P Binance y Bybit USD→VES"></div>

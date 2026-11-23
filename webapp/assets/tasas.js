@@ -64,6 +64,102 @@
     return p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
   }
 
+  // diffRates: compara campo por campo prev → curr, devuelve array de diffs
+  function diffRates(prev, curr) {
+    if (!prev || !curr) return [];
+    const diffs = [];
+    // BCV USD/EUR (guard a!=0, igual que pares y eurRef)
+    const bcvPrev = prev.sources && prev.sources.bcv;
+    const bcvCurr = curr.sources && curr.sources.bcv;
+    if (bcvPrev && bcvCurr) {
+      ['usd', 'eur'].forEach(function (k) {
+        const a = bcvPrev.samples && bcvPrev.samples[k];
+        const b = bcvCurr.samples && bcvCurr.samples[k];
+        if (a != null && b != null && a !== b && a !== 0) {
+          const pct = ((b - a) / Math.abs(a)) * 100;
+          diffs.push({ field: 'BCV ' + k.toUpperCase(), prev: a, curr: b, pct: pct });
+        }
+      });
+    }
+    // Pares multi-fiat: compra, venta, mejorCompra, mejorVenta
+    Object.keys(curr.pairs || {}).forEach(function (code) {
+      const pPrev = (prev.pairs || {})[code];
+      const pCurr = curr.pairs[code];
+      if (!pPrev) return;
+      ['compra', 'venta', 'mejorCompra', 'mejorVenta'].forEach(function (k) {
+        const a = pPrev[k], b = pCurr[k];
+        if (a != null && b != null && a !== b) {
+          const pct = Math.abs(a) > 0 ? ((b - a) / Math.abs(a)) * 100 : 0;
+          diffs.push({ field: code + ' ' + k, prev: a, curr: b, pct: pct });
+        }
+      });
+      // porPlataforma: por plataforma y lado
+      const pPrevPPP = pPrev.porPlataforma;
+      const pCurrPPP = pCurr.porPlataforma;
+      if (pPrevPPP && pCurrPPP && typeof pPrevPPP === 'object' && typeof pCurrPPP === 'object') {
+        Object.keys(pCurrPPP).forEach(function (plat) {
+          const pp = pPrevPPP[plat], cp = pCurrPPP[plat];
+          if (!pp || !cp) return;
+          ['compra', 'venta'].forEach(function (k) {
+            const a = pp[k], b = cp[k];
+            if (a != null && b != null && a !== b && a !== 0) {
+              const pct = ((b - a) / Math.abs(a)) * 100;
+              diffs.push({ field: code + '/' + plat + '/' + k, prev: a, curr: b, pct: pct });
+            }
+          });
+        });
+      }
+    });
+    // vesDetail: totales, mejores, promedios P1/P2, spread
+    const vdCurr = curr.vesDetail;
+    const vdPrev = prev.vesDetail;
+    if (vdCurr && vdPrev && typeof vdCurr === 'object') {
+      ['compraTotal', 'ventaTotal', 'mejorPrecioCompra', 'mejorPrecioVenta',
+       'compraPromP1', 'compraPromP2', 'ventaPromP1', 'ventaPromP2',
+       'spreadTotal', 'spreadMejores'].forEach(function (k) {
+        const a = vdPrev[k], b = vdCurr[k];
+        if (a != null && b != null && a !== b && a !== 0) {
+          const pct = ((b - a) / Math.abs(a)) * 100;
+          diffs.push({ field: 'VES detail ' + k, prev: a, curr: b, pct: pct });
+        }
+      });
+    }
+    // EUR ref
+    if (curr.eurRef && prev.eurRef) {
+      ['usd', 'ves'].forEach(function (k) {
+        const a = prev.eurRef[k], b = curr.eurRef[k];
+        if (a != null && b != null && a !== b) {
+          const pct = Math.abs(a) > 0 ? ((b - a) / Math.abs(a)) * 100 : 0;
+          diffs.push({ field: 'EUR ' + k, prev: a, curr: b, pct: pct });
+        }
+      });
+    }
+    return diffs;
+  }
+  CT.diffRates = diffRates;
+
+  function rateChangeHtml(pct) {
+    if (pct == null || !Number.isFinite(pct)) return '';
+    if (Math.abs(pct) < 0.001) return '';
+    const up = pct > 0;
+    const arrow = up ? '\u25B2' : '\u25BC'; // ▲ ▼
+    const cls = up ? 'rate-up rate-flash' : 'rate-down rate-flash';
+    const direction = up ? 'sube' : 'baja';
+    return '<span class="' + cls + '" aria-label="' + direction + ' ' + fmt(Math.abs(pct), 2) + '%">' + arrow + ' ' + fmt(Math.abs(pct), 2) + '%</span>';
+  }
+
+  // flashClass: aplica brevemente la clase de destello para cambios visibles
+  function flash(el, cls, ms) {
+    if (!el) return;
+    el.classList.add(cls);
+    // Respetar prefers-reduced-motion
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setTimeout(function () { el.classList.remove(cls); }, 50);
+      return;
+    }
+    setTimeout(function () { el.classList.remove(cls); }, 600);
+  }
+
   function emptyCard(msg) {
     return '<div class="card"><p class="warnline">⚠ ' + esc(msg || 'Sin snapshot de tasas. Pulsa Actualizar.') + '</p></div>';
   }
@@ -103,6 +199,26 @@
     if (!data) { holder.innerHTML = emptyCard(); return; }
     const bcv = data.sources && data.sources.bcv;
     const samples = bcv && bcv.samples;
+    // Leer prev rates solo si S.rates está presente y NO vino de caché (dato en vivo)
+    // Cuando fromCache=false, el dato es reciente y podemos comparar con el anterior
+    let prevData = null;
+    if (CT.S && CT.S.rates && !CT.S.fromCache) {
+      prevData = readPrevRates();
+    }
+    const prevSamples = (prevData && prevData.sources && prevData.sources.bcv && prevData.sources.bcv.samples) || null;
+    let changeHtml = '';
+    if (prevSamples && samples) {
+      ['usd', 'eur'].forEach(function (k) {
+        const a = prevSamples[k], b = samples[k];
+        if (a != null && b != null && a !== b) {
+          const pct = ((b - a) / a) * 100;
+          const change = rateChangeHtml(pct);
+          if (change) {
+            changeHtml += '<div class="kv"><span class="k">' + esc('Variación BCV ' + k.toUpperCase()) + '</span><span class="v">' + change + '</span></div>';
+          }
+        }
+      });
+    }
     holder.innerHTML = '<div class="card"><h2>Oficial BCV</h2>' +
       kvGrid([
         kvRow('USD', num(samples && samples.usd, 4), 'big'),
@@ -110,10 +226,22 @@
         kvRow('Estado de la fuente', esc((bcv && bcv.status) || '—')),
         kvRow('Publicación BCV', esc((bcv && bcv.actualizado) || '—'))
       ]) +
+      changeHtml +
       (samples && samples.usd != null && samples.eur != null
         ? ''
         : '<p class="warnline">⚠ BCV no publicó USD/EUR en este snapshot: se muestra «—», no se inventan tasas.</p>') +
       '</div>';
+    // Flash las filas de variación tras renderizar
+    holder.querySelectorAll('.rate-flash').forEach(function (el) { flash(el, 'rate-flash', 600); });
+  }
+
+  function readPrevRates() {
+    try {
+      const raw = localStorage.getItem('ct_rates_prev');
+      if (!raw) return null;
+      const rec = JSON.parse(raw);
+      return (rec && rec.data) ? rec.data : null;
+    } catch (e) { return null; }
   }
 
   // ==================== P2P USD→VES ====================
@@ -175,6 +303,11 @@
     const pairs = data.pairs || {};
     const codes = (data.meta && Array.isArray(data.meta.fiats) && data.meta.fiats.length
       ? data.meta.fiats : FIATS).filter(function (c) { return !!pairs[c]; });
+    // Mismo gate que renderBcv: no leer prev si vino de caché
+    let prevData = null;
+    if (CT.S && CT.S.rates && !CT.S.fromCache) {
+      prevData = readPrevRates();
+    }
     let boards = '';
     codes.forEach(function (code) {
       const p = pairs[code] || {};
@@ -182,6 +315,21 @@
       const nC = Array.isArray(ads.compra) ? ads.compra.length : 0;
       const nV = Array.isArray(ads.venta) ? ads.venta.length : 0;
       const m = p.muestras || {};
+      // Cambios vs snapshot anterior
+      let changeRows = '';
+      if (prevData && prevData.pairs && prevData.pairs[code]) {
+        const pp = prevData.pairs[code];
+        ['compra', 'venta', 'mejorCompra', 'mejorVenta'].forEach(function (k) {
+          const a = pp[k], b = p[k];
+          if (a != null && b != null && a !== b) {
+            const pct = Math.abs(a) > 0 ? ((b - a) / Math.abs(a)) * 100 : 0;
+            const change = rateChangeHtml(pct);
+            if (change) {
+              changeRows += '<div class="kv"><span class="k">Variación ' + k + '</span><span class="v">' + change + '</span></div>';
+            }
+          }
+        });
+      }
       let html = '<div class="card"><h2>' + esc(code) + ' (USD→' + esc(code) + ')</h2>' +
         kvGrid([
           kvRow('Compra', num(p.compra, dec(code)), 'big'),
@@ -193,6 +341,7 @@
           kvRow('Muestras (total)', num(m.total != null ? m.total : (m.buy != null || m.sell != null ? (m.buy || 0) + (m.sell || 0) : null), 0), 'num'),
           kvRow('Anuncios (compra/venta)', fmt(nC, 0) + ' / ' + fmt(nV, 0), 'num')
         ]) +
+        changeRows +
         '<div class="rowline"><span class="name">Mejor anuncio compra (top)</span><span class="val num">' + topAdLine(ads.compra, code) + '</span></div>' +
         '<div class="rowline"><span class="name">Mejor anuncio venta (top)</span><span class="val num">' + topAdLine(ads.venta, code) + '</span></div>' +
         '<p class="muted hint">' +
@@ -205,6 +354,8 @@
       boards += html;
     });
     holder.innerHTML = boards || '<div class="card"><p class="warnline">⚠ El snapshot no trae pares multi-fiat.</p></div>';
+    // Flash las filas de variación tras renderizar
+    holder.querySelectorAll('.rate-flash').forEach(function (el) { flash(el, 'rate-flash', 600); });
   }
 
   // ==================== Detalle VES ====================
@@ -279,21 +430,29 @@
         '<div class="rowline"><span class="name">Integridad (SHA-256 del archivo descargado)</span><span class="val mono">' + hashTxt + '</span></div>';
     }
 
-    // Momento + origen + eurRef.
+    // Momento + origen + eurRef + fuente.
     const momento = el('chk-momento');
     if (momento) {
       const age = ageMin(data.generatedAt);
       const cacheMin = S.fromCache && S.fetchedAt ? Math.floor(ageMin(S.fetchedAt) || 0) : null;
       const eur = data.eurRef;
+      const sourceLabel = S.updateSource ? esc(S.updateSource) : '—';
+      // Origen de lo que ves: usar updateSource para etiquetar correctamente
+      let origenTexto;
+      if (S.updateSource === 'local') origenTexto = 'local (no publicado)';
+      else if (S.updateSource === 'cache') origenTexto = 'copia reciente ≤5 min';
+      else if (S.fromCache) origenTexto = 'copia guardada hace ' + fmt(cacheMin, 0) + ' min';
+      else origenTexto = 'en vivo';
       momento.innerHTML =
         '<div class="rowline"><span class="name">Generado (UTC)</span><span class="val num">' + esc(formatUTC(data.generatedAt)) + '</span></div>' +
         '<div class="rowline"><span class="name">Generado (Caracas)</span><span class="val num">' +
         esc(data.generatedAtCaracas ? String(data.generatedAtCaracas).replace('T', ' ').slice(0, 19) : '—') + '</span></div>' +
         '<div class="rowline"><span class="name">Antigüedad del snapshot</span><span class="val num">' +
         esc(age != null ? fmt(age, 1) + ' min' : '—') + '</span></div>' +
-        '<div class="rowline"><span class="name">Origen de lo que ves</span><span class="val' +
+        '<div class="rowline"><span class="name">Origen de lo que ves</span><span class="v' +
         (S.fromCache ? ' neg' : '') + '">' +
-        esc(S.fromCache ? 'copia guardada hace ' + fmt(cacheMin, 0) + ' min' : 'en vivo') + '</span></div>' +
+        esc(origenTexto) + '</span></div>' +
+        '<div class="rowline"><span class="name">Fuente del snapshot</span><span class="val">' + sourceLabel + '</span></div>' +
         '<div class="rowline"><span class="name">EUR referencial</span><span class="val num">' +
         esc((eur && eur.source ? eur.source : '—') + ' · estado ' + (eur && eur.status ? eur.status : '—') +
           ' · dif. ' + (eur && eur.diffPct != null ? fmt(eur.diffPct, 2) + ' %' : '—')) + '</span></div>';
@@ -357,17 +516,21 @@
     if (btn.classList.add) btn.classList.add('is-busy');
     if (label) label.textContent = 'Actualizando…';
     try {
-      await CT.refreshRates(true);
+      await CT.refreshRates(true, 'manual');
       const gen = S && S.rates && S.rates.generatedAt;
+      const source = S && S.updateSource;
       if (S && S.fromCache) {
         CT.toast('Error al actualizar: usando copia guardada (último ' + hhmm(prevGen) + ').');
       } else if (gen && gen !== prevGen) {
-        CT.toast('Nuevo snapshot ' + hhmm(gen) + ' UTC.');
+        CT.toast('Nuevo snapshot ' + hhmm(gen) + ' UTC' + (source ? ' [' + esc(source) + ']' : '') + '.');
+        updateRefreshLabel('Actualizado ' + (source || 'automáticamente') + ' a las ' + hhmm(gen) + ' UTC');
       } else {
         CT.toast('Sin cambios (último ' + hhmm(gen || prevGen) + ' UTC).');
+        updateRefreshLabel('Sin cambios desde ' + hhmm(gen || prevGen) + ' UTC');
       }
     } catch (e) {
       CT.toast('Error al actualizar: usando copia guardada.');
+      updateRefreshLabel('Error: no se pudo actualizar');
     } finally {
       // El botón queda deshabilitado 8 s aunque la red responda antes (anti-spam).
       setTimeout(function () {
@@ -377,6 +540,16 @@
       }, 8000);
     }
   };
+
+  let refreshLabelTimer = null;
+  function updateRefreshLabel(msg) {
+    const lbl = el('refresh-label-info');
+    if (!lbl) return;
+    lbl.textContent = msg;
+    lbl.hidden = false;
+    if (refreshLabelTimer) clearTimeout(refreshLabelTimer);
+    refreshLabelTimer = setTimeout(function () { lbl.hidden = true; }, 5000);
+  }
 
   // ==================== Panel Comprobador: toggle ====================
 
@@ -452,6 +625,18 @@
     renderDiagnosticsShared(data, 'ta-diagnostico');
     bindChkToggle();
     bindConfig();
+    if (typeof CT.renderBotStatus === 'function') CT.renderBotStatus();
+    renderLastPublished(data);
+  }
+
+  // Última publicación: label con hora de generatedAt
+  function renderLastPublished(data) {
+    if (!data || !data.generatedAt) return;
+    const cont = el('refresh-label-info');
+    if (!cont) return;
+    // Mostrar hora de última publicación (activado tras un refresh exitoso)
+    cont.textContent = 'Última publicación: ' + hhmm(data.generatedAt) + ' UTC';
+    cont.hidden = false;
   }
 
   function renderAll() {

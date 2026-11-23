@@ -177,6 +177,8 @@ function makeSandbox(payload) {
   sandbox.globalThis = sandbox;
   sandbox.self = sandbox;
   sandbox.window = sandbox;
+  sandbox.addEventListener = function(type, fn) { (sandbox.listeners = sandbox.listeners || {})[type] = (sandbox.listeners[type] || []).concat(fn); };
+  sandbox.listeners = {};
   vm.createContext(sandbox);
   return sandbox;
 }
@@ -284,8 +286,9 @@ function makeSandbox(payload) {
   const momento = htmlLog['chk-momento'];
   check('comprobador: generado UTC + Caracas + antigüedad',
     /Generado \(UTC\)/.test(momento) && /Generado \(Caracas\)/.test(momento) && /Antigüedad del snapshot/.test(momento) && momento.indexOf('2026') >= 0);
-  check('comprobador: origen en vivo (no caché) + eurRef resumido',
-    /Origen de lo que ves/.test(momento) && /en vivo/.test(momento) && /EUR referencial/.test(momento) && /frankfurter/.test(momento));
+  // En tasas-tests.js init con localhost sin caché → updateSource = 'local'
+  check('comprobador: origen local (no publicado) + eurRef resumido',
+    /Origen de lo que ves/.test(momento) && /local \(no publicado\)/.test(momento) && /EUR referencial/.test(momento) && /frankfurter/.test(momento));
   const integ = htmlLog['chk-integridad'];
   check('comprobador: cadena de hashes del ledger íntegra', /Cadena de hashes del libro mayor: íntegra/.test(integ));
   const fuentes = htmlLog['chk-fuentes'];
@@ -329,13 +332,16 @@ function makeSandbox(payload) {
   await new Promise(r => setTimeout(r, 8100));
   check('onRefreshClick: tras 8 s el botón se reactiva sin clase busy',
     refreshBtn.disabled === false && !/is-busy/.test(refreshBtn.className) && documentStub.getElementById('btn-refresh-label').textContent === 'Actualizar');
-  // feedback "nuevo snapshot HH:MM": cambia generatedAt entre refrescos
-  const fakeNew = Object.assign({}, FIXTURE, { generatedAt: new Date(Date.now() - 60000).toISOString() });
-  CT.S.rates = fakeNew;
+  // feedback "nuevo snapshot HH:MM": mock fetch retorna generatedAt más reciente
+  CT.S.rates = Object.assign({}, FIXTURE, { generatedAt: new Date(Date.now() - 60000).toISOString() });
+  const futureGen = new Date(Date.now() - 10000).toISOString();
+  sandbox.fetch = async () => ({ ok: true, text: async () => JSON.stringify(Object.assign({}, FIXTURE, { generatedAt: futureGen })) });
   const getToast = () => dynEls.filter(e => e.id === 'toast')[0] || { textContent: '' };
   await CT.onRefreshClick();
   await new Promise(r => setTimeout(r, 8100));
-  check('feedback: «nuevo snapshot HH:MM» cuando cambia generatedAt', /Nuevo snapshot \d{2}:\d{2} UTC/.test(getToast().textContent || ''), getToast().textContent);
+  check('feedback: «nuevo snapshot HH:MM» cuando generado es más reciente', /Nuevo snapshot \d{2}:\d{2} UTC/.test(getToast().textContent || ''), getToast().textContent);
+  // Restaurar mock original
+  sandbox.fetch = async () => ({ ok: true, text: async () => JSON.stringify(FIXTURE) });
   // feedback "sin cambios": mismo generatedAt
   await CT.onRefreshClick();
   await new Promise(r => setTimeout(r, 8100));
@@ -382,6 +388,87 @@ function makeSandbox(payload) {
   })());
   check('pestañas anteriores siguen funcionando (casos renderiza)',
     (() => { CT.switchTab('casos'); return CT.S.tab === 'casos'; })());
+
+  /* ---- diffRates (expuesto por tasas.js) ---- */
+  check('CT.diffRates es función', typeof CT.diffRates === 'function');
+  const d0 = CT.diffRates(null, FIXTURE);
+  check('diffRates con prev=null: []', Array.isArray(d0) && d0.length === 0);
+  const d1 = CT.diffRates(FIXTURE, FIXTURE);
+  check('diffRates con mismo dato: []', Array.isArray(d1) && d1.length === 0);
+  const prevSimple = Object.assign({}, FIXTURE, { pairs: { VES: { compra: 1000, venta: 1000 } } });
+  const d2 = CT.diffRates(prevSimple, FIXTURE);
+  check('diffRates detecta cambio en compra VES', Array.isArray(d2) && d2.length > 0);
+  check('diffRates: campo tiene prev/curr/pct', d2[0] && d2[0].prev != null && d2[0].curr != null && d2[0].pct != null);
+  /* ---- diffRates: porPlataforma ---- */
+  // Copia profunda de FIXTURE con porPlataforma.binance.compra alterado
+  const FIXTURE_PPP = JSON.parse(JSON.stringify(FIXTURE));
+  FIXTURE_PPP.pairs.VES.porPlataforma.binance.compra = 9999;
+  const d3 = CT.diffRates(FIXTURE, FIXTURE_PPP);
+  check('diffRates: porPlataforma detecta cambio en VES/binance/compra',
+    Array.isArray(d3) && d3.length > 0 && d3.some(d => /VES\//.test(d.field)),
+    JSON.stringify(d3));
+  check('diffRates porPlataforma: campo contiene la ruta completa del path',
+    d3.some(d => /VES\/binance\/compra/.test(d.field)) ||
+    d3.some(d => d.field.indexOf('VES') >= 0 && d.field.indexOf('binance') >= 0 && d.field.indexOf('compra') >= 0),
+    JSON.stringify(d3));
+
+  /* ---- indicadores de cambio (▲▼) ---- */
+  // fromCache puede seguir true tras el test de "caché usada al fallar la red";
+  // resetear para permitir la lectura de prev-rates.
+  CT.S.fromCache = false;
+  // Limpiar cualquier dato previo de ct_rates_prev
+  ls.removeItem('ct_rates_prev');
+  // Simular snapshot anterior con valores diferentes
+  const prevFixture = Object.assign({}, FIXTURE, {
+    sources: { bcv: { status: 'ok', http: 200, samples: { usd: 900, eur: 1000 }, url: 'https://www.bcv.org.ve/', actualizado: 'Antes' } },
+    pairs: {
+      VES: Object.assign({}, FIXTURE.pairs.VES, { compra: 1000, venta: 1000, mejorCompra: 1000, mejorVenta: 1000 }),
+      PEN: Object.assign({}, FIXTURE.pairs.PEN, { compra: 3.0, venta: 3.0, mejorCompra: 3.0, mejorVenta: 3.0 }),
+      CLP: Object.assign({}, FIXTURE.pairs.CLP, { compra: 800, venta: 800, mejorCompra: 800, mejorVenta: 800 }),
+      COP: Object.assign({}, FIXTURE.pairs.COP, { compra: 2800, venta: 3200, mejorCompra: 2800, mejorVenta: 3200 }),
+      MXN: Object.assign({}, FIXTURE.pairs.MXN, { compra: 18, venta: 18, mejorCompra: 18, mejorVenta: 18 })
+    }
+  });
+  prevFixture.eurRef = Object.assign({}, FIXTURE.eurRef, { usd: 1.05, ves: 980 });
+  ls.setItem('ct_rates_prev', JSON.stringify({ data: prevFixture, fetchedAt: new Date().toISOString() }));
+  CT.S.rates = FIXTURE;
+  CT.renderTab('tasas');
+  const bcVhtml = htmlLog['ta-bcv'];
+  check('BCV: indicador ▲ para USD subiendo (900→919,82)', /Variación BCV USD/.test(bcVhtml) && /\u25B2/.test(bcVhtml));
+  const multiHtml = htmlLog['ta-multipares'];
+  check('Multi-par: indicador ▲ para VES compra subiendo (1000→1095,9)', /Variación compra/.test(multiHtml) && /\u25B2/.test(multiHtml));
+  // Same data: sin flecha
+  const sameData = Object.assign({}, FIXTURE);
+  ls.setItem('ct_rates_prev', JSON.stringify({ data: sameData, fetchedAt: new Date().toISOString() }));
+  CT.S.rates = sameData;
+  CT.renderTab('tasas');
+  const multiSame = htmlLog['ta-multipares'];
+  check('Multi-par: sin cambios → sin flecha ▲ ni ▼', !/\u25B2/.test(multiSame) && !/\u25BC/.test(multiSame));
+  // Down indicator
+  const prevDown = Object.assign({}, FIXTURE, {
+    sources: { bcv: { status: 'ok', http: 200, samples: { usd: 930, eur: 1020 }, url: 'https://www.bcv.org.ve/', actualizado: 'Antes' } },
+    pairs: { VES: Object.assign({}, FIXTURE.pairs.VES, { compra: 1150, venta: 1150, mejorCompra: 1150, mejorVenta: 1150 }) }
+  });
+  ls.setItem('ct_rates_prev', JSON.stringify({ data: prevDown, fetchedAt: new Date().toISOString() }));
+  CT.S.rates = FIXTURE;
+  CT.renderTab('tasas');
+  const bcVdown = htmlLog['ta-bcv'];
+  check('BCV: indicador ▼ para USD bajando (930→919,82)', /Variación BCV USD/.test(bcVdown) && /\u25BC/.test(bcVdown));
+  // Clean up
+  ls.removeItem('ct_rates_prev');
+  CT.S.rates = FIXTURE;
+
+  /* ---- source label en Comprobador ---- */
+  CT.S.updateSource = 'bot';
+  CT.renderComprobador();
+  check('Comprobador: muestra fuente del snapshot (bot)', /Fuente del snapshot/.test(htmlLog['chk-momento']) && /bot/.test(htmlLog['chk-momento']));
+  CT.S.updateSource = 'manual';
+  CT.renderComprobador();
+  check('Comprobador: muestra fuente manual', /manual/.test(htmlLog['chk-momento']));
+  CT.S.updateSource = 'cache';
+  CT.renderComprobador();
+  check('Comprobador: muestra fuente cache', /cache/.test(htmlLog['chk-momento']));
+  CT.S.updateSource = null;
 
   /* ---- sin inline en el HTML servido ni en lo renderizado ---- */
   check('index.html sin manejadores inline ni <script> embebido',

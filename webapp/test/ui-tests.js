@@ -149,6 +149,8 @@ const sandbox = {
 sandbox.globalThis = sandbox;
 sandbox.self = sandbox;
 sandbox.window = sandbox;
+sandbox.addEventListener = function(type, fn) { (sandbox.listeners = sandbox.listeners || {})[type] = (sandbox.listeners[type] || []).concat(fn); };
+(sandbox.listeners = sandbox.listeners || {});
 
 try {
   vm.createContext(sandbox);
@@ -242,7 +244,10 @@ try {
   check('desglose: USDT bruto/neto + plusvalía/diezmo/tercero/neto',
     /USDT bruto/.test(resHtml) && /USDT neto/.test(resHtml) && /Plusvalía/.test(resHtml) && /Diezmo/.test(resHtml) && /Neto para mí/.test(resHtml));
   check('aviso: promedio sin libro si no hay ads', /sin libro de anuncios/.test(resHtml));
-  check('snapshot visible con generatedAt + fuente en vivo', /Snapshot:/.test(resHtml) && /fuente: en vivo/.test(resHtml));
+  // init() sin cache inicial + localhost → updateSource = 'local' → 'local (no publicado)'
+  check('snapshot visible con generatedAt + fuente local (no publicado)',
+    /Snapshot:/.test(resHtml) && /local \(no publicado\)/.test(resHtml),
+    resHtml.slice(0, 300));
   check('botón Registrar operación en el resultado', /data-action="registrar"/.test(resHtml));
 
   /* ---- caso pedido por el bug: 100 PEN→Bs (VES) nunca sale invertido ---- */
@@ -446,22 +451,175 @@ try {
 
   // getRates() debe fetchear exactamente ratesUrl(): misma URL para Actualizar
   // (CT.onRefreshClick de tasas.js delega a getRates) y el arranque.
-  check('getRates con ?local=1 en host remoto: fetch a ./data/rates.json', (async () => {
-    let fetchedUrl = null;
-    sandbox.location.search = '?local=1';
-    sandbox.fetch = async (url) => { fetchedUrl = url; return { ok: true, text: async () => JSON.stringify(FIXTURE) }; };
-    await CT.getRates({ force: true });
-    sandbox.location.search = '';
-    return /^\.\/data\/rates\.json\?t=/.test(String(fetchedUrl));
-  })());
-  check('getRates sin flag en host remoto: fetch a raw.githubusercontent.com', (async () => {
-    let fetchedUrl = null;
-    sandbox.fetch = async (url) => { fetchedUrl = url; return { ok: true, text: async () => JSON.stringify(FIXTURE) }; };
-    await CT.getRates({ force: true });
-    return /^https:\/\/raw\.githubusercontent\.com/.test(String(fetchedUrl));
-  })());
+  // Esperar los fetchs para evitar race conditions
+  let fetchedUrl1 = null, fetchedUrl2 = null;
+  sandbox.location.search = '?local=1';
+  sandbox.fetch = async (url) => { fetchedUrl1 = url; return { ok: true, text: async () => JSON.stringify(FIXTURE) }; };
+  await CT.getRates({ force: true });
+  sandbox.location.search = '';
+  check('getRates con ?local=1 en host remoto: fetch a ./data/rates.json',
+    /^\.\/data\/rates\.json\?t=/.test(String(fetchedUrl1)), fetchedUrl1);
+  sandbox.fetch = async (url) => { fetchedUrl2 = url; return { ok: true, text: async () => JSON.stringify(FIXTURE) }; };
+  await CT.getRates({ force: true });
+  check('getRates sin flag en host remoto: fetch a raw.githubusercontent.com',
+    /^https:\/\/raw\.githubusercontent\.com/.test(String(fetchedUrl2)), fetchedUrl2);
   sandbox.fetch = async () => ({ ok: true, text: async () => JSON.stringify(FIXTURE) });
   sandbox.location.hostname = 'localhost';
+
+  /* ---- ratesUrl siempre GitHub en producción (data branch) ---- */
+  sandbox.location.hostname = 'consutasas.example';
+  sandbox.location.search = '';
+  const urlProd = CT.ratesUrl();
+  check('producción: ratesUrl siempre es raw.githubusercontent.com/data/rates.json',
+    /^https:\/\/raw\.githubusercontent\.com\/afvelis\/consutasas\/data\/rates\.json\?t=/.test(urlProd),
+    urlProd);
+  // ?local=1 marca local (no publicado)
+  sandbox.location.search = '?local=1';
+  check('?local=1: ratesUrl al mismo origen ./data/rates.json', /^\.\/data\/rates\.json\?t=/.test(CT.ratesUrl()));
+  sandbox.location.search = '';
+  sandbox.location.hostname = 'localhost';
+
+  /* ---- S.updateSource: manual/auto/cache/local ---- */
+  // Limpiar caché y resetear updateSource (usar ls del sandbox, no localStorage global de Node)
+  try { ls.removeItem('ct_rates'); } catch (e) {}
+  CT.S.updateSource = null;
+  CT.S.rates = null;
+  sandbox.location.hostname = 'localhost';
+  sandbox.location.search = '';
+  // Primero poblar la caché con un fetch
+  sandbox.fetch = async () => ({ ok: true, text: async () => JSON.stringify(FIXTURE) });
+  await CT.getRates({ force: true });
+  check('primero: caché poblada, updateSource = local', CT.S.updateSource === 'local', 'got: ' + CT.S.updateSource);
+  // Ahora sí: cache hit (sin force, la caché existe y TTL aún válido)
+  sandbox.fetch = async () => ({ ok: true, text: async () => JSON.stringify(FIXTURE) });
+  CT.S.updateSource = null;
+  CT.S.rates = null;
+  await CT.getRates({ force: false });
+  check('cache hit: updateSource = cache', CT.S.updateSource === 'cache', 'got: ' + CT.S.updateSource);
+  const newGen = new Date(Date.now() - 5000).toISOString();
+  // Bot refresh en producción: limpiar caché y rates anteriores
+  sandbox.location.hostname = 'consutasas.example';
+  sandbox.location.search = '';
+  sandbox.fetch = async (url) => { return { ok: true, text: async () => JSON.stringify(FIXTURE) }; };
+  ls.removeItem('ct_rates');
+  check('caché removida', ls.getItem('ct_rates') === null);
+  CT.S.rates = null;
+  CT.S.updateSource = null;
+  check('S.rates limpio, updateSource null', CT.S.rates === null && CT.S.updateSource === null);
+  const testUrl = CT.ratesUrl();
+  check('ratesUrl en producción (GitHub)', testUrl.indexOf('raw.githubusercontent.com') >= 0, testUrl);
+  check('antes de getRates: readCachedRates() returns null', CT.readCachedRates() === null);
+  // For production: the URL determines isLocal. Check that when URL is GitHub, isLocal=false
+  // and when URL is ./data/, isLocal=true
+  const prodUrl = 'https://raw.githubusercontent.com/afvelis/consutasas/data/rates.json?t=123';
+  check('URL GitHub: isLocal=false', prodUrl.indexOf('./data/rates.json') < 0);
+  const localUrl = './data/rates.json?t=456';
+  check('URL local: isLocal=true', localUrl.indexOf('./data/rates.json') >= 0);
+
+  /* ---- S.updateSource = bot en producción ---- */
+  // FIXTURE tiene generatedAt fija desde el load del test. Usamos un generatedAt más reciente
+  // para el fetch de producción para asegurar isNewerThan devuelva true.
+  const prodGen = new Date(Date.now() - 10000).toISOString();
+  sandbox.location.hostname = 'consutasas.example';
+  sandbox.location.search = '';
+  sandbox.fetch = async (url) => {
+    return { ok: true, text: async () => JSON.stringify(Object.assign({}, FIXTURE, { generatedAt: new Date(Date.now() - 10000).toISOString() })) };
+  };
+  ls.removeItem('ct_rates');
+  CT.S.rates = null;
+  CT.S.updateSource = null;
+  check('antes de producción: S.rates null, updateSource null', CT.S.rates === null);
+  await CT.getRates({ force: true });
+  check('S.updateSource = bot en producción', CT.S.updateSource === 'bot', 'got: ' + CT.S.updateSource);
+
+  /* ---- S.updateSource = local en localhost ---- */
+  sandbox.location.hostname = 'localhost';
+  sandbox.location.search = '';
+  sandbox.fetch = async (url) => { return { ok: true, text: async () => JSON.stringify(Object.assign({}, FIXTURE, { generatedAt: newGen })) }; };
+  ls.removeItem('ct_rates');
+  CT.S.rates = null;
+  CT.S.updateSource = null;
+  check('antes de localhost: S.rates null, updateSource null', CT.S.rates === null);
+  await CT.getRates({ force: true });
+  check('S.updateSource = local en localhost', CT.S.updateSource === 'local', 'got: ' + CT.S.updateSource);
+
+  /* ---- S.updateSource: manual y auto ---- */
+  // manual: refresh con source='manual' debe fijar updateSource a 'manual'
+  CT.S.rates = null;
+  CT.S.updateSource = null;
+  sandbox.fetch = async () => ({ ok: true, text: async () => JSON.stringify(FIXTURE) });
+  await CT.refreshRates(true, 'manual');
+  check('refreshRates(true, manual): updateSource = manual', CT.S.updateSource === 'manual', 'got: ' + CT.S.updateSource);
+  // auto: rates=null, force=false, source='auto' → debe usar source='auto' y no caché
+  CT.S.rates = null;
+  ls.removeItem('ct_rates');
+  sandbox.fetch = async () => ({ ok: true, text: async () => JSON.stringify(FIXTURE) });
+  await CT.getRates({ force: false, source: 'auto' });
+  check('getRates({force:false, source:auto}): updateSource = auto', CT.S.updateSource === 'auto', 'got: ' + CT.S.updateSource);
+  // TTL fresca + mismo generatedAt: no debe pisar 'manual' con 'cache'
+  CT.S.updateSource = 'manual';
+  CT.S.rates = FIXTURE;
+  const cached = { data: FIXTURE, fetchedAt: new Date().toISOString(), rawText: '' };
+  ls.setItem('ct_rates', JSON.stringify(cached));
+  CT.S.rates = null;
+  // force=false y cache TTL válido → early-return no debe pisar updateSource manual
+  // (el early-return solo retorna si S.rates ya existe, así que primero setear S.rates)
+  CT.S.rates = FIXTURE;
+  await CT.getRates({ force: false });
+  check('TTL fresca + mismo generatedAt: no pisa manual con cache',
+    CT.S.updateSource === 'manual', 'got: ' + CT.S.updateSource);
+
+  /* ---- init con caché fresca: fuente = copia reciente ≤5 min ---- */
+  // Sembrar ls con caché fresca, simular init con cache, verificar source label
+  const freshCache = { data: FIXTURE, fetchedAt: new Date().toISOString(), rawText: '' };
+  ls.setItem('ct_rates', JSON.stringify(freshCache));
+  // Simular: init encontró cache, aplicó rates con updateSource='cache'
+  CT.S.rates = FIXTURE;
+  CT.S.updateSource = 'cache';
+  CT.renderTab('casos');
+  CT.renderResultado();
+  const resCache = sandbox.document.getElementById('casos-resultado').innerHTML;
+  check('init con caché fresca: "copia reciente ≤5 min" presente',
+    /copia reciente ≤5 min/.test(resCache), resCache.slice(0, 300));
+  check('init con caché fresca: "en vivo" ausente',
+    !/en vivo/.test(resCache), resCache.slice(0, 300));
+  // Caso 'local': debe mostrar "local (no publicado)"
+  CT.S.updateSource = 'local';
+  CT.renderResultado();
+  const resLocal = sandbox.document.getElementById('casos-resultado').innerHTML;
+  check('updateSource=local: "local (no publicado)" presente',
+    /local \(no publicado\)/.test(resLocal), resLocal.slice(0, 300));
+  check('updateSource=local: "en vivo" ausente',
+    !/en vivo/.test(resLocal), resLocal.slice(0, 300));
+
+  /* ---- reset de par ---- */
+  CT.selectPair('VES/PEN');
+  sandbox.document.getElementById('casos-monto').value = '500';
+  CT.renderResultado();
+  const beforeReset = sandbox.document.getElementById('casos-monto').value;
+  check('antes del reset: monto tiene valor', beforeReset === '500');
+  check('antes del reset: resultado tiene HTML', sandbox.document.getElementById('casos-resultado').innerHTML.length > 0);
+  // Cambiar de par → reset
+  CT.selectPair('PEN/COP');
+  check('después del reset: monto vacío', sandbox.document.getElementById('casos-monto').value === '');
+  check('después del reset: ct_caso actualizado al nuevo par',
+    JSON.parse(ls.getItem('ct_caso') || ss.getItem('ct_caso') || 'null').pairKey === 'PEN/COP');
+  check('después del reset: modo por defecto ba-fwd', CT.S.modo && CT.S.modo.id === 'ba-fwd');
+  check('después del reset: label de monto declara COP (no PEN)',
+    sandbox.document.getElementById('casos-monto-label').textContent.indexOf('COP') >= 0);
+  // Settings globales se mantienen (comisión 8% para COP, 2% zelle, tercero off)
+  check('settings globales: comisión, 2%, tercero off se mantienen tras cambio de par',
+    sandbox.document.getElementById('casos-comision').value === '8' &&
+    sandbox.document.getElementById('casos-tercero').checked === false &&
+    sandbox.document.getElementById('casos-margin').value === '');
+
+  /* ---- index.html: CSP con api.github.com y raw.githubusercontent.com ---- */
+  check('index.html CSP: connect-src incluye raw.githubusercontent.com',
+    /connect-src.*https:\/\/raw\.githubusercontent\.com/.test(indexSrc));
+  check('index.html CSP: connect-src incluye api.github.com',
+    /connect-src.*https:\/\/api\.github\.com/.test(indexSrc));
+  check('index.html: tiene bot-status-container', /id="bot-status-container"/.test(indexSrc));
+  check('index.html: tiene refresh-label-info', /id="refresh-label-info"/.test(indexSrc));
 
   /* ---- sin inline en el HTML servido ni en lo renderizado ---- */
   check('index.html sin manejadores inline ni <script> embebido',

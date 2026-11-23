@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://raw.githubusercontent.com; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; worker-src 'self' blob:; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://raw.githubusercontent.com https://api.github.com; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; worker-src 'self' blob:; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="robots" content="noindex, nofollow">
   <meta name="description" content="ConsuTasas: tasas P2P de Binance y Bybit (VES, PEN, CLP, COP, MXN) contra BCV, calculadora de remesas y registro de operaciones. Datos oficiales del repo.">
   <title>ConsuTasas</title>
@@ -15,6 +15,7 @@
     <h1>ConsuTasas</h1>
     <span id="badge-frescura" class="badge badge-wait" role="status">Cargando…</span>
     <span id="hora-caracas" class="muted"></span>
+    <div id="bot-status-container" class="muted" hidden></div>
   </header>
 
   <nav class="bottomnav" aria-label="Pestañas">
