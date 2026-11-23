@@ -3,13 +3,19 @@
  * Cubre: arranque (CTEngine presente), pestañas + sessionStorage, render lazy,
  * chips de pares y los 4 modos por par (estado inicial determinista VES/PEN +
  * “Me depositan PEN → entrego Bs” con chip-active/mode-active, persistencia par+modo
- * en storage y restauración al volver de otra pestaña, 100 PEN→VES = 29.228,57,
+ * en storage y restauración al volver de otra pestaña, 100 PEN→VES = 28.644,00,
  * USD/USD 320→305 con override), cotización EXACTA vía CTEngine (PEN→VES 3700 →
- * 1.081.457,14 con comisión 7 %), cotización y registro INVERSOS, USD/USD con
+ * 1.059.828,00 con comisión 7 % y 2 % conservador), cotización y registro INVERSOS, USD/USD con
  * forward e inverso (Zelle 305 → 327,96), cuentas (primaria única), balance
  * (cuadre/patrimonio/pasivos), histórico (filtros/stats/cadena), migración
  * legacy v1, hooks de tasas.js y ausencia de HTML/JS inline. Llama a
  * `node webapp/test/ui-tests.js`.
+ * 3b: panel de escenarios en Casos (6 botones Mejor/2%/Promedio por lado con
+ * aria-pressed, default 2% = conservative, comisión editable default 7 % (8 % COP),
+ * recálculo con ads, “2% no aplica” sin VES y “Sin 2%” en Mejor/Promedio,
+ * aviso si el libro de venta no cubre el monto, tasa pactada efectiva,
+ * aviso sin ads, reset y oculto en USD/USD; UNA sola cotización: el desglose
+ * y el registro del caso consumen el mismo quote caseQuoteScenario).
  */
 
 'use strict';
@@ -238,7 +244,7 @@ try {
   sandbox.document.getElementById('casos-tercero').checked = true;
   CT.renderResultado();
   const resHtml = sandbox.document.getElementById('casos-resultado').innerHTML;
-  check('PEN→VES 3700: entregas 1.081.457,14 Bs', resHtml.indexOf('1.081.457,14') >= 0, resHtml.slice(0, 400));
+  check('PEN→VES 3700: entregas 1.059.828,00 Bs (quote del panel @7% conservador)', resHtml.indexOf('1.059.828,00') >= 0, resHtml.slice(0, 400));
   check('desglose: cliente deposita / tú entregas / tasa pactada',
     /Cliente deposita/.test(resHtml) && /Tú entregas/.test(resHtml) && /Tasa pactada/.test(resHtml));
   check('desglose: USDT bruto/neto + plusvalía/diezmo/tercero/neto',
@@ -254,12 +260,172 @@ try {
   sandbox.document.getElementById('casos-monto').value = '100';
   CT.renderResultado();
   const res100 = sandbox.document.getElementById('casos-resultado').innerHTML;
-  check('PEN→VES 100: entregas 29.228,57 Bs', res100.indexOf('29.228,57') >= 0, res100.slice(0, 400));
+  check('PEN→VES 100: entregas 28.644,00 Bs (quote del panel @7% conservador, venta 1.078)', res100.indexOf('28.644,00') >= 0, res100.slice(0, 400));
+  check('desglose sin cotización duplicada: no aparece el número de caseQuote cuando el panel está en 2%',
+    res100.indexOf('29.228,57') < 0, res100.slice(0, 200));
   check('desglose declara moneda explícita: Cliente deposita: PEN / Tú entregas: VES',
     /Cliente deposita: PEN/.test(res100) && /Tú entregas: VES/.test(res100) &&
     !/Cliente deposita: VES/.test(res100) && !/Tú entregas: PEN/.test(res100));
   sandbox.document.getElementById('casos-monto').value = '3700';
   CT.renderResultado();
+
+  /* ---- 3b: panel de escenarios (Mejor / 2% / Promedio, compra/venta) ----
+   * Contexto reutilizado: VES/PEN modo ba-fwd (deposita PEN → entrego VES).
+   * El panel cotiza con CTEngine.caseQuoteScenario (misma fuente del desglose
+   * y del registro), comisión default de la config (7 % con PEN) editable y el
+   * mismo monto del caso; sin ads usa la media FX y lo avisa. */
+  sandbox.document.getElementById('casos-monto').value = '100';
+  CT.renderTab('casos');
+  const escCard = sandbox.document.getElementById('casos-escenario-card');
+  check('3b: tarjeta de escenarios visible para par fiat', escCard && escCard.hidden === false);
+  const escOriginHtml = sandbox.document.getElementById('casos-esc-origin').innerHTML;
+  const escDestHtml = sandbox.document.getElementById('casos-esc-dest').innerHTML;
+  check('3b: 6 botones de escenario (3 por lado Mejor/2%/Promedio)',
+    (escOriginHtml.match(/data-sc-mode=/g) || []).length === 3 &&
+    (escDestHtml.match(/data-sc-mode=/g) || []).length === 3);
+  check('3b: etiquetas Mejor / 2% / Promedio en ambas filas',
+    /Mejor/.test(escOriginHtml) && /2%/.test(escOriginHtml) && /Promedio/.test(escOriginHtml) &&
+    /Mejor/.test(escDestHtml) && /2%/.test(escDestHtml) && /Promedio/.test(escDestHtml));
+  check('3b: filas Compra (origen): PEN y Venta (destino): VES',
+    sandbox.document.getElementById('casos-esc-origin-label').textContent === 'Compra (origen): PEN' &&
+    sandbox.document.getElementById('casos-esc-dest-label').textContent === 'Venta (destino): VES');
+  check('3b: default 2% (conservative) activo en ambos lados al cargar',
+    /mode-active" data-sc-side="origin" data-sc-mode="conservative"/.test(escOriginHtml) &&
+    /mode-active" data-sc-side="dest" data-sc-mode="conservative"/.test(escDestHtml));
+  check('3b: aria-pressed en los 6 botones (true solo en los activos conservative)',
+    escOriginHtml.match(/aria-pressed=/g).length === 3 && escDestHtml.match(/aria-pressed=/g).length === 3 &&
+    escOriginHtml.match(/aria-pressed="true"/g).length === 1 && escDestHtml.match(/aria-pressed="true"/g).length === 1 &&
+    /aria-pressed="false"/.test(escOriginHtml) && /aria-pressed="false"/.test(escDestHtml));
+  const escOut1 = sandbox.document.getElementById('casos-escenario').innerHTML;
+  check('3b: desglose PEN→VES 100 @7% conservador: monto final 28.644,00 Bs (aria-live en el contenedor)',
+    escOut1.indexOf('28.644,00') >= 0 && /Monto final/.test(escOut1), escOut1.slice(0, 500));
+  check('3b: muestra tasas compra usada (origen) y venta usada (destino)',
+    /Tasa compra usada \(origen\)/.test(escOut1) && /Tasa venta usada \(destino\)/.test(escOut1) &&
+    /1\.078,00/.test(escOut1), escOut1.slice(0, 500));
+  check('3b: tasa pactada es la efectiva (286,44), no la bruta (314,29)',
+    /Tasa pactada \(efectiva\)/.test(escOut1) && escOut1.indexOf('286,44') >= 0 &&
+    escOut1.indexOf('314,29') < 0, escOut1.slice(0, 500));
+  check('3b: 2% aplicado (par toca VES) + USDT + moneda destino + comisión 7,00%',
+    /Aplicado \(el par toca VES\)/.test(escOut1) && /USDT bruto/.test(escOut1) &&
+    /Moneda destino/.test(escOut1) && /7,00 %/.test(escOut1), escOut1.slice(0, 500));
+  check('3b: sin ads → aviso claro estilo warnline (nunca inventa)',
+    /warnline/.test(escOut1) && /Sin libro de anuncios/.test(escOut1));
+
+  // Cambio de modo recalcula: snapshot temporal con ads de precio (PEN compra asc
+  // 3.50→3.75, VES venta desc 1100→1080).
+  const ratesSinAds = CT.S.rates, fxSinAds = CT.S.fx;
+  const ratesAds = JSON.parse(JSON.stringify(ratesSinAds));
+  ratesAds.pairs.PEN.ads = {
+    compra: [{ price: 3.5, min: 1, max: 1000000, available: 1000000 }, { price: 3.75, min: 1, max: 1000000, available: 1000000 }],
+    venta: [{ price: 3.7, min: 1, max: 1000000, available: 1000000 }, { price: 3.4, min: 1, max: 1000000, available: 1000000 }]
+  };
+  ratesAds.pairs.VES.ads = {
+    compra: [{ price: 1000, min: 1, max: 1000000, available: 1000000 }, { price: 1005, min: 1, max: 1000000, available: 1000000 }],
+    venta: [{ price: 1100, min: 1, max: 1000000, available: 1000000 }, { price: 1080, min: 1, max: 1000000, available: 1000000 }]
+  };
+  CT.S.rates = ratesAds;
+  CT.S.fx = engine.buildFx(ratesAds);
+  CT.renderTab('casos');
+  const escCons = sandbox.document.getElementById('casos-escenario').innerHTML;
+  check('3b: cambio de modo recalcula (conservative con ads): monto 26.248,32 (compra 3,75 / venta 1.058,40)',
+    escCons.indexOf('26.248,32') >= 0 && /3,75/.test(escCons) && /1\.058,40/.test(escCons), escCons.slice(0, 500));
+  check('3b: con ads no hay aviso de “Sin libro de anuncios”', !/Sin libro de anuncios/.test(escCons));
+  check('3b: setEscenarioModo(origin, best) recalcula sin recargar: compra 3,50 y monto 28.123,20 (dest mantiene 2%)',
+    CT.setEscenarioModo('origin', 'best') === true &&
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('28.123,20') >= 0 &&
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('3,50') >= 0 &&
+    sandbox.document.getElementById('casos-escenario').innerHTML !== escCons,
+    sandbox.document.getElementById('casos-escenario').innerHTML.slice(0, 400));
+  check('3b: modo activo refleja la selección (origin = best)',
+    /mode-active" data-sc-side="origin" data-sc-mode="best"/.test(sandbox.document.getElementById('casos-esc-origin').innerHTML));
+  /* P1: el 2% solo aplica en el modo “2%” — mejor destino = venta 1.100,00 sin descuento. */
+  check('3b: setEscenarioModo(dest, best): venta 1.100,00 (sin 2%) → monto final 29.228,57 y “Sin 2%”',
+    CT.setEscenarioModo('dest', 'best') === true &&
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('29.228,57') >= 0 &&
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('1.100,00') >= 0 &&
+    /Sin 2%/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('292,29') >= 0,
+    sandbox.document.getElementById('casos-escenario').innerHTML.slice(0, 400));
+  /* P0: cambiar modo repinta TAMBIÉN el desglose (#casos-resultado): panel y
+   * desglose muestran la misma cifra, y registrarCaso usa ese mismo quote. */
+  const resAdsBest = sandbox.document.getElementById('casos-resultado').innerHTML;
+  check('P0: setEscenarioModo(dest, best) repinta el desglose: 29.228,57 y ya no 28.644,00',
+    resAdsBest.indexOf('29.228,57') >= 0 && resAdsBest.indexOf('28.644,00') < 0,
+    resAdsBest.slice(0, 400));
+  const stAds = CT.S.ledger;
+  const ledBackup = JSON.parse(JSON.stringify(stAds));
+  sandbox.document.getElementById('casos-cuenta-in').value = 'peru';
+  sandbox.document.getElementById('casos-cuenta-out').value = 'efectivo-ves';
+  sandbox.document.getElementById('casos-obs').value = 'prueba ads best';
+  CT.registrarCaso();
+  const mvAds = stAds.movements[stAds.movements.length - 1];
+  check('P0: registrarCaso usa el mismo quote que el desglose repintado (out = delivered 29.228,57)',
+    mvAds != null && mvAds.in.amount === 100 && mvAds.in.currency === 'PEN' &&
+    mvAds.out.currency === 'VES' && mvAds.out.amount === CT.quoteEscenario().delivered &&
+    Math.round(mvAds.out.amount * 100) / 100 === 29228.57,
+    JSON.stringify(mvAds && mvAds.out));
+  // Restaurar el ledger que validan los bloques siguientes (balance, histórico…).
+  Object.keys(ledBackup).forEach(function (k) { stAds[k] = ledBackup[k]; });
+  CT.setEscenarioModo('origin', 'conservative'); // vuelve al default para el resto
+  CT.setEscenarioModo('dest', 'conservative');
+  CT.S.rates = ratesSinAds;
+  CT.S.fx = fxSinAds;
+  CT.renderTab('casos');
+
+  check('3b: comisión editable del escenario por defecto 7 (PEN, defaultCommissionPct)',
+    sandbox.document.getElementById('casos-esc-comision').value === '7');
+  CT.setEscenarioModo('origin', 'best');
+  CT.selectPair('VES/PEN');
+  check('3b: el reset por par vuelve al 2% default en ambos lados y comisión 7',
+    /mode-active" data-sc-side="origin" data-sc-mode="conservative"/.test(sandbox.document.getElementById('casos-esc-origin').innerHTML) &&
+    /mode-active" data-sc-side="dest" data-sc-mode="conservative"/.test(sandbox.document.getElementById('casos-esc-dest').innerHTML) &&
+    sandbox.document.getElementById('casos-esc-comision').value === '7');
+
+  // Par sin VES (PEN→COP): “2% no aplica”.
+  CT.selectPair('PEN/COP');
+  sandbox.document.getElementById('casos-monto').value = '100';
+  CT.renderTab('casos');
+  const escNoVes = sandbox.document.getElementById('casos-escenario').innerHTML;
+  check('3b: par sin VES (COP→PEN): “2% no aplica” y sin tasas con 2%',
+    /2% no aplica/.test(escNoVes) && !/Aplicado/.test(escNoVes), escNoVes.slice(0, 400));
+  check('3b: cotiza sin 2% (tasa venta usada = PEN venta 3,70 sin descuento)',
+    /3,70/.test(escNoVes), escNoVes.slice(0, 400));
+  // P1: la comisión del par con depósito COP inicia en 8 (defaultCommissionPct).
+  CT.setEscenarioModo('origin', 'best');
+  check('3b: comisión por defecto 8 con depósito COP',
+    sandbox.document.getElementById('casos-esc-comision').value === '8');
+  // P2: libro de venta existe pero ninguna ad cubre el monto → aviso explícito
+  // (el motor usa la media del snapshot, nunca inventa).
+  const ratesCorto = JSON.parse(JSON.stringify(ratesSinAds));
+  ratesCorto.pairs.PEN.ads = { venta: [{ price: 3.7, min: 100000, max: 90000000, available: 1000000 }] };
+  CT.S.rates = ratesCorto;
+  CT.S.fx = engine.buildFx(ratesCorto);
+  CT.renderTab('casos');
+  const escCorto = sandbox.document.getElementById('casos-escenario').innerHTML;
+  check('3b: libro de venta existe pero no cubre el monto → aviso y tasa media (3,70)',
+    /El libro de venta de PEN no cubre el monto/.test(escCorto) && /3,70/.test(escCorto),
+    escCorto.slice(0, 500));
+  CT.S.rates = ratesSinAds;
+  CT.S.fx = fxSinAds;
+  CT.renderTab('casos');
+
+  // P2: una comisión editada no sobrevive al cambio de par (dataset.touched
+  // se limpia en selectPair y el default del nuevo par manda: 7 con PEN).
+  const escComT = sandbox.document.getElementById('casos-esc-comision');
+  escComT.value = '3';
+  escComT.dataset.touched = '1';
+  CT.selectPair('VES/PEN');
+  check('P2: selectPair limpia dataset.touched y repone la comisión default (7 con PEN)',
+    escComT.dataset.touched == null && escComT.value === '7',
+    'value=' + escComT.value + ' touched=' + escComT.dataset.touched);
+
+  // Zelle: el panel no aplica (sin tasas FX).
+  CT.selectPair('USD/USD');
+  check('3b: panel oculto en USD/USD (Zelle)', escCard.hidden === true);
+  CT.selectPair('VES/PEN');
+  check('3b: panel vuelve a ser visible en par fiat', escCard.hidden === false);
+  sandbox.document.getElementById('casos-monto').value = '3700';
+  CT.renderTab('casos');
 
   /* ---- registro de la operación ---- */
   const st = CT.S.ledger;
@@ -274,6 +440,15 @@ try {
     mv.type === 'operation' && mv.in.currency === 'PEN' && mv.in.amount === 3700 &&
     mv.out.currency === 'VES' && mv.in.account === 'peru' && mv.out.account === 'efectivo-ves');
   check('movimiento: diezmo/tercero/neto del caso en meta', Math.abs(mv.meta.case.diezmo - 7.4) < 1e-9 && Math.abs(mv.meta.case.neto - 48.1) < 1e-9);
+  // P0: el registro usa el mismo quote del panel (caseQuoteScenario), no caseQuote.
+  check('movimiento: guarda el quote del escenario (comisión 7, modos conservative, efectiva 286,44)',
+    mv.meta.case.commissionPct === 7 && mv.meta.case.originMode === 'conservative' &&
+    mv.meta.case.destMode === 'conservative' && mv.meta.case.effectiveRate === 286.44 &&
+    mv.out.amount === 1059828, JSON.stringify(mv.meta.case));
+  check('movimiento: rateInfo del escenario (compra 3,5 / venta 1.078 con 2%)',
+    mv.meta.case.rateInfo && mv.meta.case.rateInfo.originRate === 3.5 &&
+    mv.meta.case.rateInfo.destRate === 1078 && mv.meta.case.rateInfo.safetyPct === 0.02,
+    JSON.stringify(mv.meta.case && mv.meta.case.rateInfo));
 
   /* ---- histórico ---- */
   CT.parts.historico();
@@ -332,12 +507,13 @@ try {
   /* ---- modo inverso: cotización + registro (después del balance para no alterar sus pasivos) ---- */
   CT.selectPair('VES/PEN');
   check('setModo activa el inverso BA (Necesito VES → me depositan PEN)', CT.setModo('ba-rev') === true && CT.S.modo._fwd === false);
-  // Fixture: depósito forward 3700 PEN → 1.081.457,14 VES ⇒ inverso target 1.081.457,14 VES → 3700 PEN.
-  sandbox.document.getElementById('casos-monto').value = '1081457.14';
+  // Quote del panel @7% conservador: depósito forward 3700 PEN → 1.059.828,00 VES
+  // ⇒ inverso target 1.059.828,00 VES → 3700 PEN (redondo, vía caseQuoteScenario).
+  sandbox.document.getElementById('casos-monto').value = '1059828';
   CT.renderResultado();
   const resRev = sandbox.document.getElementById('casos-resultado').innerHTML;
   check('inverso: muestra “Cliente deposita” con 3.700,00 PEN calculado', resRev.indexOf('3.700,00') >= 0 && /Cliente deposita/.test(resRev));
-  check('inverso: entrega fijada = target (1.081.457,14 VES)', resRev.indexOf('1.081.457,14') >= 0);
+  check('inverso: entrega fijada = target (1.059.828,00 VES)', resRev.indexOf('1.059.828,00') >= 0);
   check('inverso: destacado (big) en “Cliente deposita”', (() => {
     const m = resRev.match(/<span class="k">Cliente deposita: PEN<\/span><span class="v big/);
     return !!m;
@@ -349,9 +525,9 @@ try {
   CT.registrarCaso();
   check('registro inverso en el libro (append-only)', st.movements.length === movsBeforeRev + 1);
   const mvRev = st.movements[st.movements.length - 1];
-  check('movimiento inverso: in PEN 3700, out VES 1.081.457,14',
+  check('movimiento inverso: in PEN 3700, out VES 1.059.828,00',
     mvRev.type === 'operation' && mvRev.in.currency === 'PEN' && Math.abs(mvRev.in.amount - 3700) < 0.01 &&
-    mvRev.out.currency === 'VES' && Math.abs(mvRev.out.amount - 1081457.14) < 0.02 &&
+    mvRev.out.currency === 'VES' && Math.abs(mvRev.out.amount - 1059828) < 0.01 &&
     mvRev.in.account === 'peru' && mvRev.out.account === 'efectivo-ves');
   check('movimiento inverso: meta.case.reversed + desglose fiscal',
     mvRev.meta.case.reversed === true && mvRev.meta.case.base > 0);
@@ -607,9 +783,9 @@ try {
   check('después del reset: modo por defecto ba-fwd', CT.S.modo && CT.S.modo.id === 'ba-fwd');
   check('después del reset: label de monto declara COP (no PEN)',
     sandbox.document.getElementById('casos-monto-label').textContent.indexOf('COP') >= 0);
-  // Settings globales se mantienen (comisión 8% para COP, 2% zelle, tercero off)
-  check('settings globales: comisión, 2%, tercero off se mantienen tras cambio de par',
-    sandbox.document.getElementById('casos-comision').value === '8' &&
+  // Settings globales se mantienen (comisión del panel 8% para COP, tercero off)
+  check('settings globales: comisión del panel (8 % COP), tercero off se mantienen tras cambio de par',
+    sandbox.document.getElementById('casos-esc-comision').value === '8' &&
     sandbox.document.getElementById('casos-tercero').checked === false &&
     sandbox.document.getElementById('casos-margin').value === '');
 
@@ -620,6 +796,12 @@ try {
     /connect-src.*https:\/\/api\.github\.com/.test(indexSrc));
   check('index.html: tiene bot-status-container', /id="bot-status-container"/.test(indexSrc));
   check('index.html: tiene refresh-label-info', /id="refresh-label-info"/.test(indexSrc));
+  check('index.html: panel de escenarios (3b) presente con aria-live polite y comisión editable',
+    /id="casos-escenario-card"/.test(indexSrc) && /id="casos-escenario" aria-live="polite"/.test(indexSrc) &&
+    /id="casos-esc-comision"/.test(indexSrc) && /id="casos-esc-origin"/.test(indexSrc) && /id="casos-esc-dest"/.test(indexSrc));
+  check('index.html: la comisión del panel inicia vacía (default desde defaultCommissionPct, sin value fijo)',
+    !/casos-esc-comision"[^>]*value=/.test(indexSrc) &&
+    !/SC_COMMISSION_DEFAULT/.test(fs.readFileSync(path.join(__dirname, '..', 'assets', 'app.js'), 'utf8')));
 
   /* ---- sin inline en el HTML servido ni en lo renderizado ---- */
   check('index.html sin manejadores inline ni <script> embebido',

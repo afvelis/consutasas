@@ -164,6 +164,31 @@ main {
 .btn-primary { background: var(--accent2); border-color: var(--accent2); color: #fff; }
 /* Selección activa en Casos: chip de par (app.js renderChips) y modo (renderModos). */
 .chips .btn.chip-active, .chips .btn.mode-active { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+
+/* Panel de escenarios (3b en Casos): filas Compra (origen) / Venta (destino)
+ * con Mejor / 2% / Promedio. Phone-first: etiqueta arriba; en ≥480px en línea. */
+.sc-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 12px 0 4px;
+}
+.sc-row .sc-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.sc-row .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (min-width: 480px) {
+  .sc-row { flex-direction: row; align-items: center; gap: 12px; }
+}
 .btn-big { width: 100%; margin-top: 10px; }
 .btn-small { min-height: 40px; padding: 6px 12px; font-size: 0.85rem; }
 .btn-danger { color: var(--bad); border-color: rgba(239,68,68,.4); }

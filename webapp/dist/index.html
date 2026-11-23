@@ -67,10 +67,6 @@
           <input id="casos-override" type="number" inputmode="decimal" step="any" min="0" placeholder="Ej: 305 para un depósito de 320" autocomplete="off">
         </div>
 
-        <label for="casos-comision">Comisión (%)</label>
-        <input id="casos-comision" type="number" inputmode="decimal" step="any" min="0" max="100" autocomplete="off">
-        <p class="muted hint" id="casos-comision-hint">7 % por defecto; 8 % si el cliente deposita COP.</p>
-
         <label class="checkline">
           <input id="casos-tercero" type="checkbox">
           <span>Tercero (25 % de la base)</span>
@@ -84,6 +80,24 @@
 
         <label for="casos-cuenta-out">Cuenta desde la que sales lo entregado</label>
         <select id="casos-cuenta-out"></select>
+      </div>
+
+      <!-- 3b: panel de escenarios (engine.js: rateScenarios/caseQuoteScenario;
+           filas Compra (origen) y Venta (destino), botones Mejor / 2% / Promedio -->
+      <div class="card" id="casos-escenario-card" hidden>
+        <h2>Escenarios de tasa</h2>
+        <div class="sc-row">
+          <span class="sc-label" id="casos-esc-origin-label">Compra (origen)</span>
+          <div id="casos-esc-origin" class="chips" role="group" aria-label="Escenario de compra (origen)"></div>
+        </div>
+        <div class="sc-row">
+          <span class="sc-label" id="casos-esc-dest-label">Venta (destino)</span>
+          <div id="casos-esc-dest" class="chips" role="group" aria-label="Escenario de venta (destino)"></div>
+        </div>
+        <label for="casos-esc-comision">Comisión del escenario (%)</label>
+        <input id="casos-esc-comision" type="number" inputmode="decimal" step="any" min="0" max="100" autocomplete="off">
+        <p class="muted hint">Mejor / 2 % / Promedio por lado. El 2 % es el descuento de seguridad sobre la tasa del Bolívar (VES): solo aplica si el par toca VES.</p>
+        <div id="casos-escenario" aria-live="polite"></div>
       </div>
 
       <div id="casos-resultado" aria-live="polite"></div>

@@ -942,27 +942,52 @@
 
   /* Ejecuta un caso: registra el movimiento en el libro ("auto-registering").
    * depositAccount = cuenta donde entra el depósito del cliente;
-   * deliverAccount = cuenta desde la que sale lo entregado (null = externo). */
+   * deliverAccount = cuenta desde la que sale lo entregado (null = externo).
+   * Si `req` trae originMode/destMode (panel de escenarios), la cotización se
+   * delega en caseQuoteScenario: UNA sola cotización para desglose y registro
+   * (comisión por req.commissionPct; depósito/entrega/effectiveRate/commissionPct/
+   * modos/rateInfo del escenario quedan en el movimiento). */
   function executeCase(state, fx, req) {
-    var q = caseQuote(state.settings, fx, req);
+    var scenario = !!(req && (req.originMode != null || req.destMode != null));
+    var q = scenario ? caseQuoteScenario(state.settings, fx, req) : caseQuote(state.settings, fx, req);
     if (!q.ok) return q;
+    var rateIn = scenario
+      ? q.rateInfo.originRate
+      : (q.rateInfo.unitsPerUsdIn != null ? q.rateInfo.unitsPerUsdIn : 1);
+    var rateOut = scenario
+      ? q.rateInfo.destRate
+      : (q.rateInfo.unitsPerUsdOut != null ? q.rateInfo.unitsPerUsdOut : 1);
+    var caseMeta = {
+      kind: q.kind, pair: q.pair, direction: q.direction,
+      commission: q.commission, commissionPct: q.commissionPct,
+      marginPct: q.marginPct || null, overridden: q.overridden, reversed: q.reversed === true, referencial: q.referencial,
+      grossUsd: q.grossUsd, profitUsd: q.profitUsd,
+      base: q.base, diezmo: q.diezmo, tercero: q.tercero, neto: q.neto,
+      raw: q.raw,
+      rateAtIn: rateIn, rateAtOut: rateOut
+    };
+    if (scenario) {
+      // Registro guiado por el quote del panel: modos elegidos, tasa efectiva y
+      // rateInfo del escenario quedan en el movimiento (deposit/delivered son
+      // los montos in/out; nunca se re-cotiza con caseQuote).
+      caseMeta.originMode = q.scenario.originMode;
+      caseMeta.destMode = q.scenario.destMode;
+      caseMeta.vesSafetyPct = q.scenario.vesSafetyPct;
+      caseMeta.destSafetyPct = q.scenario.destSafetyPct;
+      caseMeta.effectiveRate = q.rateInfo.effectiveRate;
+      caseMeta.rateInfo = {
+        originRate: q.rateInfo.originRate, destRate: q.rateInfo.destRate,
+        quotedRate: q.rateInfo.quotedRate, effectiveRate: q.rateInfo.effectiveRate,
+        marketRate: q.rateInfo.marketRate, safetyPct: q.rateInfo.safetyPct,
+        adUsed: q.rateInfo.adUsed
+      };
+    }
     var mv = {
       date: req.date, type: 'operation',
-      in: { account: req.depositAccount || null, currency: q.currencyIn, amount: q.deposit, rateAt: q.rateInfo.unitsPerUsdIn != null ? q.rateInfo.unitsPerUsdIn : 1 },
-      out: { account: req.deliverAccount === undefined ? req.depositAccount : req.deliverAccount, currency: q.currencyOut, amount: q.delivered, rateAt: q.rateInfo.unitsPerUsdOut != null ? q.rateInfo.unitsPerUsdOut : 1 },
+      in: { account: req.depositAccount || null, currency: q.currencyIn, amount: q.deposit, rateAt: rateIn },
+      out: { account: req.deliverAccount === undefined ? req.depositAccount : req.deliverAccount, currency: q.currencyOut, amount: q.delivered, rateAt: rateOut },
       note: req.note || ('Caso ' + q.currencyIn + '→' + q.currencyOut + (q.referencial ? ' (referencial)' : '')),
-      meta: {
-        case: {
-          kind: q.kind, pair: q.pair, direction: q.direction,
-          commission: q.commission, commissionPct: q.commissionPct,
-          marginPct: q.marginPct || null, overridden: q.overridden, reversed: q.reversed === true, referencial: q.referencial,
-          grossUsd: q.grossUsd, profitUsd: q.profitUsd,
-          base: q.base, diezmo: q.diezmo, tercero: q.tercero, neto: q.neto,
-          raw: q.raw,
-          rateAtIn: q.rateInfo.unitsPerUsdIn != null ? q.rateInfo.unitsPerUsdIn : (q.kind === 'usd-usd' ? 1 : null),
-          rateAtOut: q.rateInfo.unitsPerUsdOut != null ? q.rateInfo.unitsPerUsdOut : (q.kind === 'usd-usd' ? 1 : null)
-        }
-      }
+      meta: { case: caseMeta }
     };
     var saved = appendMovement(state, mv);
     return { ok: true, quote: q, movement: saved };

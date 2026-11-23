@@ -685,7 +685,7 @@ console.log('\n[15d] caseQuoteScenario inverso con ads (bootstrap media FX → s
 /* P0/BLOCK item-1: bootstrap sin fiat/placeholder.
  * FX con PEN ads { price: 3.5845, min: 100 } que solo admiten ~169 PEN.
  * El bootstrap viejo (amountUsd=10 → cost 35.8 < min 100) fallaba.
- * Con el fix: media PEN = 3.5845, amountUsd ≈ 13.27, segunda pasada con deposit ≈ 169.
+ * Con el fix: media PEN = 3.5845, amountUsd ≈ 2.79 (bootstrap con refAmount 10), segunda pasada con deposit ≈ 169.
  * El ad 3.5845 tiene cost ≈ 169 ≥ min 100 → ejecutable en la segunda pasada. */
 var fxAd = engine.buildFx({
   fixture: true,
@@ -780,6 +780,68 @@ check('caseQuoteScenario: commissionPct=0 -> commission=0',
   qZeroComm.ok === true && qZeroComm.commission === 0 && qZeroComm.commissionPct === 0);
 check('caseQuoteScenario: commissionPct=0 -> delivered = round2(grossUsd * rateDest)',
   qZeroComm.delivered === Math.round(qZeroComm.grossUsd * qZeroComm.rateInfo.destRate * 100) / 100);
+
+console.log('\n[17] executeCase: registra el MISMO quote del escenario (originMode/destMode/commissionPct)');
+/* P0: si req trae originMode/destMode, executeCase delega en caseQuoteScenario —
+ * una sola cotización para desglose y registro; el movimiento guarda
+ * deposit/delivered/effectiveRate/commissionPct/modos/rateInfo. */
+var stSc = engine.createInitialState();
+var execSc = engine.executeCase(stSc, FX, {
+  pair: ['VES', 'PEN'], direction: 'BA', deposit: 100,
+  originMode: 'best', destMode: 'conservative',
+  vesSafetyPct: 0, destSafetyPct: 0.02, commissionPct: 0.07,
+  date: '2026-02-07', depositAccount: 'peru', deliverAccount: 'efectivo-ves'
+});
+check('executeCase escenario: ok y movimiento operation', execSc.ok === true && execSc.movement.type === 'operation');
+check('executeCase escenario: quote.kind scenario con mismo desglose que caseQuoteScenario',
+  execSc.quote.kind === 'scenario' && execSc.quote.commission === 0.07 && execSc.quote.scenario.destMode === 'conservative');
+check('executeCase escenario: in PEN 100, out VES = delivered del quote en cuentas',
+  execSc.movement.in.currency === 'PEN' && execSc.movement.in.amount === 100 &&
+  execSc.movement.out.currency === 'VES' && execSc.movement.out.amount === execSc.quote.delivered &&
+  execSc.movement.in.account === 'peru' && execSc.movement.out.account === 'efectivo-ves');
+check('executeCase escenario: rateAt = tasas del escenario (compra origen / venta destino con 2%)',
+  Math.abs(execSc.movement.in.rateAt - FX.unitsPerUsdCompra.PEN) < 1e-9 &&
+  Math.abs(execSc.movement.out.rateAt - FX.unitsPerUsdVenta.VES * 0.98) < 1e-9);
+var scMeta = execSc.movement.meta.case;
+check('executeCase escenario: meta guarda commissionPct/modos/effectiveRate',
+  scMeta.commissionPct === 7 && scMeta.originMode === 'best' && scMeta.destMode === 'conservative' &&
+  scMeta.effectiveRate === execSc.quote.rateInfo.effectiveRate, JSON.stringify(scMeta));
+check('executeCase escenario: meta guarda rateInfo del escenario (originRate/destRate/safetyPct/adUsed)',
+  scMeta.rateInfo && Math.abs(scMeta.rateInfo.originRate - 3.5) < 1e-9 &&
+  Math.abs(scMeta.rateInfo.destRate - 1078) < 1e-9 && scMeta.rateInfo.safetyPct === 0.02 &&
+  scMeta.rateInfo.quotedRate != null && scMeta.rateInfo.marketRate != null);
+check('executeCase escenario: desglose fiscal en meta', scMeta.base > 0 && scMeta.diezmo === Math.round(scMeta.base * 0.1 * 100) / 100);
+near('saldo Perú tras escenario: +100 PEN', engine.accountBalance(stSc, 'peru').native, 100, 0.01);
+check('cadena válida tras executeCase escenario', engine.verifyChain(stSc.movements));
+check('executeCase sin originMode/destMode sigue con caseQuote legacy (kind pair)',
+  engine.executeCase(engine.createInitialState(), FX, { pair: ['VES', 'PEN'], direction: 'BA', deposit: 100, date: '2026-02-07', depositAccount: 'peru', deliverAccount: 'efectivo-ves' }).quote.kind === 'pair');
+
+// P1 comisión default 7 % / 8 % COP y 2 % solo en conservative (vals del fixture).
+var qComm7 = engine.caseQuoteScenario(engine.defaultSettings(), FX, {
+  pair: ['VES', 'PEN'], direction: 'BA', deposit: 100,
+  originMode: 'best', destMode: 'best', vesSafetyPct: 0, destSafetyPct: 0
+});
+check('caseQuoteScenario sin commissionPct: comisión default 7 % (PEN)', qComm7.commission === 0.07 && qComm7.commissionPct === 7);
+check('P1 2%-por-modo: best PEN→VES venta 1100 (sin 2%) → 29.228,57',
+  Math.abs(qComm7.rateInfo.destRate - 1100) < 1e-9 && qComm7.delivered === 29228.57, String(qComm7.delivered));
+var qConsFix = engine.caseQuoteScenario(engine.defaultSettings(), FX, {
+  pair: ['VES', 'PEN'], direction: 'BA', deposit: 100,
+  originMode: 'best', destMode: 'conservative', vesSafetyPct: 0, destSafetyPct: 0.02
+});
+check('P1 2%-por-modo: conservative PEN→VES venta 1.078 (1100×0,98) → 28.644,00',
+  Math.abs(qConsFix.rateInfo.destRate - 1078) < 1e-9 && qConsFix.delivered === 28644.00, String(qConsFix.delivered));
+var qComm8 = engine.caseQuoteScenario(engine.defaultSettings(), FX, {
+  pair: ['VES', 'COP'], direction: 'BA', deposit: 100,
+  originMode: 'best', destMode: 'best', vesSafetyPct: 0, destSafetyPct: 0
+});
+check('caseQuoteScenario sin commissionPct: comisión default 8 % (COP)', qComm8.commission === 0.08 && qComm8.commissionPct === 8);
+var execDef = engine.executeCase(engine.createInitialState(), FX, {
+  pair: ['VES', 'PEN'], direction: 'BA', deposit: 100,
+  originMode: 'conservative', destMode: 'conservative', vesSafetyPct: 0.02, destSafetyPct: 0.02,
+  date: '2026-02-07', depositAccount: 'peru', deliverAccount: 'efectivo-ves'
+});
+check('executeCase escenario sin commissionPct: comisión default 7 % en el movimiento',
+  execDef.ok && execDef.movement.meta.case.commissionPct === 7);
 
 console.log('\n===== ENGINE: ' + (checks - failures) + '/' + checks + ' pruebas OK, ' + failures + ' fallidas =====');
 process.exit(failures ? 1 : 0);
