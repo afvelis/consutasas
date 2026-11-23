@@ -41,6 +41,8 @@ TIMEOUT_BCV = (10, 25)
 BCV_URL = "https://www.bcv.org.ve/"
 DOLARAPI_USD_URL = "https://ve.dolarapi.com/v1/dolares"
 DOLARAPI_EUR_URL = "https://ve.dolarapi.com/v1/euros"
+FRANKFURTER_URL = "https://api.frankfurter.app/latest?from=EUR&to=USD"
+ERAPI_EUR_URL = "https://open.er-api.com/v6/latest/EUR"
 BINANCE_URL = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
 BYBIT_URL = "https://api2.bybit.com/fiat/otc/item/online"
 
@@ -89,8 +91,32 @@ def _pedir_con_reintento(hacer):
 
 # ==================== BINANCE ====================
 
+def _registro_binance(adv, page):
+    """Anuncio Binance → registro {price, min, max, available, platform, page}.
+
+    Sin precio utilizable se descarta el anuncio (el agregado de precios no cambia).
+    Los campos que falten quedan en null (nunca se inventa).
+    """
+    precio = _limpiar_precio(adv.get("price"))
+    if precio is None:
+        return None
+    return {
+        "price": precio,
+        "min": _limpiar_precio(adv.get("minSingleTransAmount")),
+        "max": _limpiar_precio(adv.get("maxSingleTransAmount")),
+        # disponible restante del anuncio (surplusAmount); tradableQuantity queda fuera:
+        # es el límite comerciable por orden, no el disponible del anuncio.
+        "available": _limpiar_precio(adv.get("surplusAmount")),
+        "platform": "binance",
+        "page": page,
+    }
+
+
 def _peticion_binance(trade_type, fiat, page, rows=ROWS):
-    """trade_type BUY = usuario compra USDT (tasa compra); SELL = vende."""
+    """trade_type BUY = usuario compra USDT (tasa compra); SELL = vende.
+
+    Devuelve anuncios completos (no solo precios) para conservar min/max/available.
+    """
     payload = {
         "asset": "USDT",
         "fiat": fiat,
@@ -116,16 +142,34 @@ def _peticion_binance(trade_type, fiat, page, rows=ROWS):
     items = datos.get("data")
     if not isinstance(items, list):
         raise SinConexion("Binance P2P: 'data' no es lista")
-    precios = []
+    registros = []
     for item in items:
         adv = item.get("adv") if isinstance(item, dict) else None
-        precio = _limpiar_precio(adv.get("price")) if isinstance(adv, dict) else None
-        if precio is not None:
-            precios.append(precio)
-    return resp.status_code, precios
+        registro = _registro_binance(adv, page) if isinstance(adv, dict) else None
+        if registro is not None:
+            registros.append(registro)
+    return resp.status_code, registros
 
 
 # ==================== BYBIT ====================
+
+def _registro_bybit(item, page):
+    """Anuncio Bybit → registro {price, min, max, available, platform, page}.
+
+    lastQuantity = restante del anuncio (quantity es el total original).
+    """
+    precio = _limpiar_precio(item.get("price"))
+    if precio is None:
+        return None
+    return {
+        "price": precio,
+        "min": _limpiar_precio(item.get("minAmount")),
+        "max": _limpiar_precio(item.get("maxAmount")),
+        "available": _limpiar_precio(item.get("lastQuantity")),
+        "platform": "bybit",
+        "page": page,
+    }
+
 
 def _peticion_bybit(side, fiat, page, size=ROWS):
     """side "1" = usuario compra USDT (tasa compra); "0" = vende."""
@@ -160,12 +204,12 @@ def _peticion_bybit(side, fiat, page, size=ROWS):
     items = result.get("items")
     if not isinstance(items, list):
         raise SinConexion("Bybit P2P: 'items' no es lista")
-    precios = []
+    registros = []
     for item in items:
-        precio = _limpiar_precio(item.get("price")) if isinstance(item, dict) else None
-        if precio is not None:
-            precios.append(precio)
-    return resp.status_code, precios
+        registro = _registro_bybit(item, page) if isinstance(item, dict) else None
+        if registro is not None:
+            registros.append(registro)
+    return resp.status_code, registros
 
 
 # ==================== BCV ====================
@@ -274,13 +318,70 @@ def obtener_bcv():
     return resultado
 
 
+# ==================== EUR/USD REFERENCIAL (sin P2P EUR) ====================
+
+def _tasa_eur_usd():
+    """EUR/USD referencial: Frankfurter (ECB) primario; fallback open.er-api.com.
+
+    Devuelve (usd | None, fuente | None). Sin inventar: si ambas fallan → (None, None).
+    """
+    for nombre, url in (("frankfurter", FRANKFURTER_URL), ("erapi", ERAPI_EUR_URL)):
+        try:
+            def hacer():
+                resp = requests.get(url, headers=HEADERS_BCV, timeout=TIMEOUT_BCV)
+                if resp.status_code >= 400:
+                    raise SinConexion(f"{nombre} devolvió HTTP {resp.status_code}")
+                return resp
+            resp = _pedir_con_reintento(hacer)
+            datos = resp.json()
+            if not isinstance(datos, dict):
+                raise SinConexion(f"{nombre}: JSON no-dict")
+            if nombre == "erapi" and datos.get("result") != "success":
+                raise SinConexion(f"erapi: result={datos.get('result')!r}")
+            usd = _limpiar_precio((datos.get("rates") or {}).get("USD"))
+            if usd is None:
+                raise SinConexion(f"{nombre}: rates.USD no utilizable")
+            return usd, nombre
+        except (SinConexion, ValueError):
+            continue
+    return None, None
+
+
+def _construir_eur_ref(tasa, fuente, bcv, ahora):
+    """eurRef: referencia ECB/er-api combinada con el BCV del snapshot.
+
+    ves = BCV EUR/VES; vesImplicito = usd × BCV USD/VES (implícito del par);
+    diffPct = (ves - vesImplicito) / vesImplicito * 100.
+    Si no hay tasa referencial, status='fallo' con usd/source null. Si la tasa está
+    pero el BCV no trae usd o eur, no se inventa nada: status='parcial' y nulls.
+    """
+    eur_ref = {"usd": None, "ves": None, "vesImplicito": None, "diffPct": None,
+               "source": None,
+               "fetchedAt": ahora.isoformat(timespec="seconds").replace("+00:00", "Z"),
+               "status": "fallo"}
+    if tasa is None:
+        return eur_ref
+    eur_ref["usd"] = tasa
+    eur_ref["source"] = fuente
+    bcv_eur, bcv_usd = bcv.get("eur"), bcv.get("usd")
+    if bcv_eur is None or bcv_usd is None:
+        eur_ref["status"] = "parcial"
+        return eur_ref
+    eur_ref["ves"] = round(bcv_eur, 4)
+    eur_ref["vesImplicito"] = round(tasa * bcv_usd, 4)
+    eur_ref["diffPct"] = _pct(eur_ref["vesImplicito"], eur_ref["ves"])
+    eur_ref["status"] = "ok"
+    return eur_ref
+
+
 # ==================== DESCARGA P2P (con estado por fuente) ====================
 
 def _descargar_fuente(plataforma, fiats):
     """Descarga el libro P2P de una plataforma. Devuelve (datos, counts, status).
 
-    datos[fiat][lado] = {page: [precios|None]}, lado: 'compra' (usuario compra
-    USDT, BUY/side 1) o 'venta' (vende, SELL/side 0).
+    datos[fiat][lado] = {page: [anuncios|None]}, lado: 'compra' (usuario compra
+    USDT, BUY/side 1) o 'venta' (vende, SELL/side 0). Cada anuncio es un registro
+    {price, min, max, available, platform, page}.
     status: 'ok' si todos los requests y cada (fiat, lado) tuvieron >=5 anuncios
     acumulados; 'parcial' si algún request falló o hubo lados con pocos; 'fallo'
     si todo falló. Nunca lanza: una fuente caída no mata el snapshot.
@@ -300,10 +401,10 @@ def _descargar_fuente(plataforma, fiats):
             for page in PAGES:
                 try:
                     if plataforma == "binance":
-                        http, precios = _peticion_binance(etiqueta, fiat, page)
+                        http, anuncios = _peticion_binance(etiqueta, fiat, page)
                     else:
-                        http, precios = _peticion_bybit(etiqueta, fiat, page)
-                    datos[fiat][lado][page] = precios
+                        http, anuncios = _peticion_bybit(etiqueta, fiat, page)
+                    datos[fiat][lado][page] = anuncios
                     counts["ok"] += 1
                 except SinConexion as exc:
                     datos[fiat][lado][page] = None
@@ -339,16 +440,30 @@ def _pct(deno, num):
 
 
 def _agregar_lado(lados_por_page):
-    """De {page: [precios|null]} a (media, mejor_min_o_max, promedios por página, n).
+    """De {page: [anuncios|null]} a (media, mejor_min_o_max, promedios por página, n).
 
     compra: mejor = mínimo (usuario paga menos por USDT).
     venta: mejor = máximo (usuario recibe más por USDT).
+    Usa solo el precio de cada registro de anuncio (igual que antes de conservar ads).
     """
-    todos = [p for page in PAGES for p in (lados_por_page.get(page) or []) ]
-    media = _promedio(todos)
-    promedios_page = {f"page{p}": (round(m, 4) if (m := _promedio(lados_por_page.get(p) or [])) is not None else None)
-                      for p in PAGES}
-    return media, promedios_page, len(todos), todos
+    todos = [a for page in PAGES for a in (lados_por_page.get(page) or [])]
+    precios = [a["price"] for a in todos]
+    media = _promedio(precios)
+    promedios_page = {f"page{p}": (round(m, 4) if (m := _promedio(
+        [a["price"] for a in (lados_por_page.get(p) or [])])) is not None else None)
+        for p in PAGES}
+    return media, promedios_page, len(precios), precios
+
+
+def _top_ads(lados_por_page, descendente):
+    """Top 20 de anuncios combinados de un lado (Binance+Bybit, páginas 1-2).
+
+    compra ascendente (mejor = precio más bajo para comprar USDT);
+    venta descendente (mejor = precio más alto al vender USDT).
+    """
+    todos = [a for p in PAGES for a in (lados_por_page.get(p) or [])]
+    ordenados = sorted(todos, key=lambda a: a["price"], reverse=descendente)
+    return ordenados[:20]
 
 
 def _agregar_par(plataforma_datos_binance, plataforma_datos_bybit, fiat):
@@ -359,12 +474,12 @@ def _agregar_par(plataforma_datos_binance, plataforma_datos_bybit, fiat):
             "compra": (datos.get(fiat, {}).get("compra") or {}),
             "venta": (datos.get(fiat, {}).get("venta") or {}),
         }
-    compra_media, compra_pages, n_compra, compra_todos = _agregar_lado(
-        {p: [x for fuente in fuente_lados.values()
-             for x in (fuente["compra"].get(p) or [])] for p in PAGES})
-    venta_media, venta_pages, n_venta, venta_todos = _agregar_lado(
-        {p: [x for fuente in fuente_lados.values()
-             for x in (fuente["venta"].get(p) or [])] for p in PAGES})
+    compra_ads = {p: [a for fuente in fuente_lados.values()
+                      for a in (fuente["compra"].get(p) or [])] for p in PAGES}
+    venta_ads = {p: [a for fuente in fuente_lados.values()
+                     for a in (fuente["venta"].get(p) or [])] for p in PAGES}
+    compra_media, compra_pages, n_compra, compra_todos = _agregar_lado(compra_ads)
+    venta_media, venta_pages, n_venta, venta_todos = _agregar_lado(venta_ads)
 
     estados_plataforma = {}
     for nombre, fuente in fuente_lados.items():
@@ -372,9 +487,9 @@ def _agregar_par(plataforma_datos_binance, plataforma_datos_bybit, fiat):
         n_ven = sum(len(fuente["venta"].get(p) or []) for p in PAGES)
         estados_plataforma[nombre] = {
             "compra": round(compra_media_pl, 4) if (compra_media_pl := _promedio(
-                [x for p in PAGES for x in (fuente["compra"].get(p) or [])])) else None,
+                [a["price"] for p in PAGES for a in (fuente["compra"].get(p) or [])])) else None,
             "venta": round(venta_media_pl, 4) if (venta_media_pl := _promedio(
-                [x for p in PAGES for x in (fuente["venta"].get(p) or [])])) else None,
+                [a["price"] for p in PAGES for a in (fuente["venta"].get(p) or [])])) else None,
             "muestras": {"compra": n_com, "venta": n_ven},
         }
 
@@ -400,6 +515,8 @@ def _agregar_par(plataforma_datos_binance, plataforma_datos_bybit, fiat):
         "muestras": {"buy": n_compra, "sell": n_venta, "total": n_compra + n_venta},
         "promediosPorPagina": {"compra": compra_pages, "venta": venta_pages},
         "porPlataforma": estados_plataforma,
+        "ads": {"compra": _top_ads(compra_ads, descendente=False),
+                "venta": _top_ads(venta_ads, descendente=True)},
     }
     return par
 
@@ -514,6 +631,8 @@ def construir_snapshot():
     warnings_out.extend(binance_warns)
     warnings_out.extend(bybit_warns)
 
+    eur_usd, eur_fuente = _tasa_eur_usd()
+
     pares = {}
     for fiat in FIATS:
         pares[fiat] = _agregar_par(binance_datos, bybit_datos, fiat)
@@ -523,6 +642,10 @@ def construir_snapshot():
     poder = _construir_poder_adquisitivo(pares, bcv)
 
     generated = datetime.now(timezone.utc)
+    eur_ref = _construir_eur_ref(eur_usd, eur_fuente, bcv, generated)
+    if eur_ref["status"] == "fallo":
+        warnings_out.append("EUR/USD referencial no disponible (Frankfurter y "
+                            "er-api fallaron): EUR queda en modo manual/BCV implícito")
     snapshot = {
         "schema": "consutasas/rates.v1",
         "generatedAt": generated.isoformat(timespec="seconds").replace("+00:00", "Z"),
@@ -542,12 +665,14 @@ def construir_snapshot():
         },
         "pairs": pares,
         "vesDetail": ves_detail,
+        "eurRef": eur_ref,
         "cross": cross,
         "variations": variaciones,
         "purchasingPower": poder,
         "diagnostics": _diagnostics(binance_counts, bybit_counts, time.monotonic() - iniciado),
         "warnings": warnings_out,
-        "meta": {"pages": max(PAGES), "rows": ROWS, "fiats": FIATS},
+        "meta": {"pages": max(PAGES), "rows": ROWS, "fiats": FIATS,
+                 "schemaVersion": "2"},
     }
     return _sanitizar(snapshot)
 
@@ -571,6 +696,12 @@ def _imprimir_resumen(s):
     print(f"BCV [{bcv['status']}] fuente={bcv['fuente']} "
           f"USD={bcv['samples']['usd']} EUR={bcv['samples']['eur']} "
           f"actualizado={bcv['actualizado']!r}")
+    eur = s["eurRef"]
+    print(f"eurRef [{eur['status']}] fuente={eur['source']} USD={eur['usd']} "
+          f"fetchedAt={eur['fetchedAt']}")
+    if eur["ves"] is not None:
+        print(f"eurRef EUR→VES: BCV={eur['ves']} implícito={eur['vesImplicito']} "
+              f"diff={eur['diffPct']}%")
     ves = s["pairs"]["VES"]
     for plataforma in ("binance", "bybit"):
         d = ves["porPlataforma"].get(plataforma, {})
@@ -588,6 +719,11 @@ def _imprimir_resumen(s):
               f"{_f(p['compra'], 12)}{_f(p['venta'], 12)}{_f(p['spreadPct'], 9)}"
               f"{_f(p['mejorCompra'], 12)}{_f(p['mejorVenta'], 12)}"
               f"{p['muestras']['total']:>10}")
+    print("-" * 72)
+    for fiat in FIATS:
+        ads = s["pairs"][fiat].get("ads") or {}
+        print(f"ads {fiat}: compra={len(ads.get('compra') or [])} "
+              f"venta={len(ads.get('venta') or [])}")
     print("-" * 72)
     for item in s["purchasingPower"]:
         if item["lossPct"] is not None:
