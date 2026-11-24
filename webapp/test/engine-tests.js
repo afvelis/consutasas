@@ -502,6 +502,80 @@ check('rateScenarios con ads: conservative originRate (PEN compra worst) = 3.75'
   scAds.conservative.originRate === 3.75);
 check('rateScenarios con ads: conservative destRate (VES venta media) = 1100',
   scAds.conservative.destRate === 1100);
+// 3c: el cuarto escenario max existe y usa el mayor price ejecutable por lado
+check('rateScenarios: max existe', scenarios.max && scenarios.max.originRate && scenarios.max.destRate);
+check('rateScenarios max (con ads): originRate (PEN compra mayor ejecutable) = 3.75', scAds.max.originRate === 3.75);
+check('rateScenarios max (con ads): destRate (VES venta media, sin ads) = 1100', scAds.max.destRate === 1100);
+check('rateScenarios max: conserva conservative VES intacto (venta media 1100)',
+  scAds.conservative.destRate === 1100 && scAds.conservative.originRate === 3.75);
+
+console.log('\n[14c] Escenario Máximo (3c) — pares SIN VES: mayor price ejecutable, sin 2%');
+// max compra (lista asc) = mayor price = 3.75 (no el primero)
+var arMaxC = engine.adRateAt(FX, 'PEN', 'compra', 10, 'max', adsCompraInline);
+check('adRateAt max compra: rate = 3.75 (mayor price)', arMaxC.rate === 3.75);
+check('adRateAt max compra: source ad_max_compra', arMaxC.source === 'ad_max_compra');
+check('adRateAt max compra: ad.price = 3.75', arMaxC.ad && arMaxC.ad.price === 3.75 && arMaxC.mode === 'max');
+// max venta (lista desc) = mayor price = 3.90 (no el último)
+var arMaxV = engine.adRateAt(FX, 'PEN', 'venta', 10, 'max', adsVentaInline);
+check('adRateAt max venta: rate = 3.90 (mayor price)', arMaxV.rate === 3.90);
+check('adRateAt max venta: source ad_max_venta', arMaxV.source === 'ad_max_venta');
+// max respeta el filtro: la ad de mayor precio SI es ejecutable salta a la siguiente
+var arMaxF = engine.adRateAt(FX, 'PEN', 'compra', 10, 'max', [
+  { price: 3.90, min: 50, max: 500, available: 100 },  // cost 39 > max 500? no: 10*3.9=39 < min 50 → filtrada
+  { price: 3.60, min: 5, max: 500, available: 100 }
+]);
+check('adRateAt max compra: filtrada la mayor (cost<min) → 3.60', arMaxF.rate === 3.60);
+// ads vacías → media FX (igual que best/conservative)
+var arMaxM = engine.adRateAt(FX, 'VES', 'compra', 10, 'max', []);
+check('adRateAt max ads vacías: fallback a media FX compra', arMaxM.rate === 1000);
+// PEN→COP real (AB, sin VES): Máximo compra = mayor, Máximo venta = mayor, safety 0
+var fxCopAds = engine.buildFx({
+  fixture: true,
+  pairs: { PEN: { compra: 3.5, venta: 3.7 }, COP: { compra: 4000, venta: 4200 } },
+  eurRef: { fixture: true, source: 'frankfurter', usdToEur: 0.9 }
+});
+fxCopAds.pairs = {
+  PEN: { ads: adsCompraInline }, // compra asc 3.50→3.75: best 3.50, max 3.75
+  COP: { ads: [
+    { price: 4250, min: 5, max: 1000000, available: 1000000 }, // venta desc: best = max = 4250
+    { price: 4200, min: 5, max: 1000000, available: 1000000 }
+  ] }
+};
+var qMaxCop = engine.caseQuoteScenario(engine.defaultSettings(), fxCopAds, {
+  pair: ['PEN', 'COP'], direction: 'AB', deposit: 100,
+  originMode: 'max', destMode: 'max',
+  vesSafetyPct: 0.02, destSafetyPct: 0.02, // aún así el modo Máximo fuerza 0
+  commissionPct: 0.05, terceroOn: false
+});
+check('caseQuoteScenario Máximo PEN→COP: ok', qMaxCop.ok === true);
+check('caseQuoteScenario PEN→COP máx compra: originRate = 3.75 (mayor, sin 2%)',
+  Math.abs(qMaxCop.rateInfo.originRate - 3.75) < 1e-9);
+check('caseQuoteScenario PEN→COP máx venta: destRate = 4250 (mayor, sin 2%)',
+  Math.abs(qMaxCop.rateInfo.destRate - 4250) < 1e-9);
+check('caseQuoteScenario PEN→COP Máximo: safetyPct = 0 (sin 2%)', qMaxCop.rateInfo.safetyPct === 0);
+check('caseQuoteScenario PEN→COP Máximo: scenario sin safety (0/0)',
+  qMaxCop.scenario.vesSafetyPct === 0 && qMaxCop.scenario.destSafetyPct === 0);
+check('caseQuoteScenario PEN→COP Máximo: adUsed = ad de mayor price (3.75)',
+  qMaxCop.rateInfo.adUsed != null && qMaxCop.rateInfo.adUsed.ad.price === 3.75 && qMaxCop.rateInfo.adUsed.mode === 'max');
+check('caseQuoteScenario PEN→COP Máximo: rateInfo coherente (efectiva = delivered/deposit, pactada bruta, mercado, profitSafety)',
+  qMaxCop.rateInfo.effectiveRate != null && Math.abs(qMaxCop.rateInfo.effectiveRate - Math.round(qMaxCop.delivered / qMaxCop.deposit * 100) / 100) < 1e-9 &&
+  Math.abs(qMaxCop.rateInfo.quotedRate - Math.round(4250 / 3.75 * 100) / 100) < 1e-9 &&
+  typeof qMaxCop.rateInfo.marketRate === 'number' && typeof qMaxCop.rateInfo.profitSafety === 'number');
+// La ad del destino también queda expuesta vía destScenarios.max (escenario usado)
+var destMax = qMaxCop.rateInfo.destScenarios.max;
+check('caseQuoteScenario PEN→COP Máximo: destScenarios.max.destRate = 4250 y destAd.price = 4250',
+  destMax && Math.abs(destMax.destRate - 4250) < 1e-9 && destMax.destAd && destMax.destAd.rate === 4250);
+// VES sigue igual: conservative 2% y max coexisten en rateScenarios
+var scVes = engine.rateScenarios(S, FX, ['VES', 'PEN'], 'BA', 10, 'compra');
+check('VES sigue igual: el orden del libro se conserva (best ≤ average ≤ conservative en compra; best ≥ … en venta)',
+  scVes.best.originRate <= scVes.average.originRate && scVes.average.originRate <= scVes.conservative.originRate &&
+  scVes.best.destRate >= scVes.average.destRate && scVes.average.destRate >= scVes.conservative.destRate);
+var qVesIgual = engine.caseQuoteScenario(engine.defaultSettings(), FX, {
+  pair: ['VES', 'PEN'], direction: 'BA', deposit: 100,
+  originMode: 'conservative', destMode: 'conservative', vesSafetyPct: 0, destSafetyPct: 0.02
+});
+check('VES sigue igual: conservative PEN→VES venta 1078 (1100×0,98) → 28.644,00',
+  Math.abs(qVesIgual.rateInfo.destRate - 1078) < 1e-9 && qVesIgual.delivered === 28644.00, String(qVesIgual.delivered));
 
 console.log('\n[15] caseQuoteScenario — PEN→VES 160 PEN, 5% com, 2% VES, tercero off');
 var Spen = engine.defaultSettings();

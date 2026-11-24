@@ -10,11 +10,11 @@
  * (cuadre/patrimonio/pasivos), histórico (filtros/stats/cadena), migración
  * legacy v1, hooks de tasas.js y ausencia de HTML/JS inline. Llama a
  * `node webapp/test/ui-tests.js`.
- * 3b: panel de escenarios en Casos (6 botones Mejor/2%/Promedio por lado con
- * aria-pressed, default 2% = conservative, comisión editable default 7 % (8 % COP),
- * recálculo con ads, “2% no aplica” sin VES y “Sin 2%” en Mejor/Promedio,
- * aviso si el libro de venta no cubre el monto, tasa pactada efectiva,
- * aviso sin ads, reset y oculto en USD/USD; UNA sola cotización: el desglose
+ * 3b/3c: panel de escenarios en Casos (6 botones por lado con aria-pressed: Mejor/2%/Promedio
+ * en pares con VES, default 2%; Mejor/Promedio/Máximo en pares sin VES, default Mejor,
+ * comisión editable default 7 % (8 % COP), recálculo con ads, “Sin 2%” fuera del modo 2%
+ * (sin “2% no aplica”), aviso si el libro de venta no cubre el monto, tasa pactada efectiva,
+ * aviso sin ads, reset por par y oculto en USD/USD; UNA sola cotización: el desglose
  * y el registro del caso consumen el mismo quote caseQuoteScenario).
  */
 
@@ -381,19 +381,80 @@ try {
     /mode-active" data-sc-side="dest" data-sc-mode="conservative"/.test(sandbox.document.getElementById('casos-esc-dest').innerHTML) &&
     sandbox.document.getElementById('casos-esc-comision').value === '7');
 
-  // Par sin VES (PEN→COP): “2% no aplica”.
+  // Par sin VES (COP→PEN, 3c): botones Mejor / Promedio / Máximo (sin 2%) y default Mejor.
   CT.selectPair('PEN/COP');
+  const escOriginNoVes = sandbox.document.getElementById('casos-esc-origin').innerHTML;
+  const escDestNoVes = sandbox.document.getElementById('casos-esc-dest').innerHTML;
+  check('3c: par sin VES: 6 botones (Mejor/Promedio/Máximo ×2) y sin botón de 2%',
+    (escOriginNoVes.match(/data-sc-mode=/g) || []).length === 3 &&
+    (escDestNoVes.match(/data-sc-mode=/g) || []).length === 3 &&
+    /Mejor/.test(escOriginNoVes) && /Promedio/.test(escOriginNoVes) && /Máximo/.test(escOriginNoVes) &&
+    /Mejor/.test(escDestNoVes) && /Promedio/.test(escDestNoVes) && /Máximo/.test(escDestNoVes) &&
+    escOriginNoVes.indexOf('conservative') < 0 && escDestNoVes.indexOf('conservative') < 0);
+  check('3c: par sin VES: default “Mejor” (best) activo en ambos lados (aria-pressed)',
+    /mode-active" data-sc-side="origin" data-sc-mode="best"/.test(escOriginNoVes) &&
+    /mode-active" data-sc-side="dest" data-sc-mode="best"/.test(escDestNoVes) &&
+    escOriginNoVes.match(/aria-pressed="true"/g).length === 1 &&
+    escDestNoVes.match(/aria-pressed="true"/g).length === 1);
   sandbox.document.getElementById('casos-monto').value = '100';
   CT.renderTab('casos');
   const escNoVes = sandbox.document.getElementById('casos-escenario').innerHTML;
-  check('3b: par sin VES (COP→PEN): “2% no aplica” y sin tasas con 2%',
-    /2% no aplica/.test(escNoVes) && !/Aplicado/.test(escNoVes), escNoVes.slice(0, 400));
+  check('3b/c: par sin VES (COP→PEN): etiqueta “Sin 2%” (el botón 2% no existe) y sin “2% no aplica”/“Aplicado”',
+    /Sin 2%/.test(escNoVes) && !/Aplicado/.test(escNoVes) && escNoVes.indexOf('2% no aplica') < 0,
+    escNoVes.slice(0, 400));
   check('3b: cotiza sin 2% (tasa venta usada = PEN venta 3,70 sin descuento)',
     /3,70/.test(escNoVes), escNoVes.slice(0, 400));
   // P1: la comisión del par con depósito COP inicia en 8 (defaultCommissionPct).
   CT.setEscenarioModo('origin', 'best');
   check('3b: comisión por defecto 8 con depósito COP',
     sandbox.document.getElementById('casos-esc-comision').value === '8');
+  // 3c: Máximo compra da tasa mayor que Mejor (libro COP compra asc 4000→4040, PEN venta desc 3.7→3.4).
+  const ratesAdsNoVes = JSON.parse(JSON.stringify(ratesSinAds));
+  ratesAdsNoVes.pairs.COP.ads = {
+    compra: [{ price: 4000, min: 0, max: 100000000, available: 100000000 }, { price: 4040, min: 0, max: 100000000, available: 100000000 }],
+    venta: [{ price: 4200, min: 0, max: 100000000, available: 100000000 }, { price: 4150, min: 0, max: 100000000, available: 100000000 }]
+  };
+  ratesAdsNoVes.pairs.PEN.ads = {
+    compra: [{ price: 3.5, min: 0, max: 100000000, available: 100000000 }, { price: 3.75, min: 0, max: 100000000, available: 100000000 }],
+    venta: [{ price: 3.7, min: 0, max: 100000000, available: 100000000 }, { price: 3.4, min: 0, max: 100000000, available: 100000000 }]
+  };
+  CT.S.rates = ratesAdsNoVes;
+  CT.S.fx = engine.buildFx(ratesAdsNoVes);
+  CT.renderTab('casos');
+  const escBestNV = sandbox.document.getElementById('casos-escenario').innerHTML;
+  check('3c: Mejor (default) compra COP = 4.000,00 (primer anuncio del libro asc)',
+    /4\.000,00/.test(escBestNV) && escBestNV.indexOf('4.040,00') < 0, escBestNV.slice(0, 400));
+  check('3c: setEscenarioModo(origin, max): compra COP = 4.040,00 (mayor price > Mejor) y sin 2%',
+    CT.setEscenarioModo('origin', 'max') === true &&
+    /4\.040,00/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    /Sin 2%/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    !/Aplicado/.test(sandbox.document.getElementById('casos-escenario').innerHTML),
+    sandbox.document.getElementById('casos-escenario').innerHTML.slice(0, 400));
+  check('3c: el modo 2% (conservative) se rechaza en un par sin VES',
+    CT.setEscenarioModo('origin', 'conservative') === false && CT.setEscenarioModo('dest', 'conservative') === false);
+  check('3c: cambiar modo repinta el desglose con el MISMO quote Máximo (entregado = motor con compra 4.040 y comisión 8%)',
+    (() => {
+      const resMaxNV = sandbox.document.getElementById('casos-resultado').innerHTML;
+      const mDeliv = resMaxNV.match(/T&uacute; entregas: PEN<\/span><span class="v big">S\/ ([\d.,]+)/) ||
+        resMaxNV.match(/Tú entregas: PEN<\/span><span class="v big">S\/ ([\d.,]+)/);
+      const fxNq = engine.buildFx(ratesAdsNoVes);
+      fxNq.pairs = { COP: { ads: ratesAdsNoVes.pairs.COP.ads.compra }, PEN: { ads: ratesAdsNoVes.pairs.PEN.ads.venta } };
+      const qMaxCalc = engine.caseQuoteScenario(sandbox.CT.S.ledger.settings, fxNq, { pair: ['PEN', 'COP'], direction: 'BA', deposit: 100,
+        originMode: 'max', destMode: 'best', vesSafetyPct: 0, destSafetyPct: 0, commissionPct: 0.08, terceroOn: false });
+      if (!mDeliv) return false;
+      const parsed = parseFloat(mDeliv[1].replace(/\./g, '').replace(',', '.'));
+      return Math.abs(parsed - qMaxCalc.delivered) < 0.005;
+    })(), 'ver detalle en consola');
+  // Reset por par: en un par con VES el default es 2%; en uno sin VES vuelve a Mejor.
+  CT.selectPair('VES/PEN');
+  check('3c: reset por par (con VES): vuelve al 2% (conservative) default',
+    /mode-active" data-sc-side="origin" data-sc-mode="conservative"/.test(sandbox.document.getElementById('casos-esc-origin').innerHTML));
+  CT.selectPair('PEN/COP');
+  check('3c: reset por par (sin VES): vuelve a Mejor (best) default y botones sin 2%',
+    /mode-active" data-sc-side="origin" data-sc-mode="best"/.test(sandbox.document.getElementById('casos-esc-origin').innerHTML) &&
+    sandbox.document.getElementById('casos-esc-origin').innerHTML.indexOf('conservative') < 0);
+  sandbox.document.getElementById('casos-monto').value = '100';
+  CT.renderTab('casos');
   // P2: libro de venta existe pero ninguna ad cubre el monto → aviso explícito
   // (el motor usa la media del snapshot, nunca inventa).
   const ratesCorto = JSON.parse(JSON.stringify(ratesSinAds));

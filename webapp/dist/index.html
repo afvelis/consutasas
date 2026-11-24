@@ -82,8 +82,9 @@
         <select id="casos-cuenta-out"></select>
       </div>
 
-      <!-- 3b: panel de escenarios (engine.js: rateScenarios/caseQuoteScenario;
-           filas Compra (origen) y Venta (destino), botones Mejor / 2% / Promedio -->
+        <!-- 3b/3c: panel de escenarios (engine.js: rateScenarios/caseQuoteScenario;
+             filas Compra (origen) y Venta (destino), botones Mejor / 2% / Promedio
+             (par con VES) o Mejor / Promedio / Máximo (par sin VES)) -->
       <div class="card" id="casos-escenario-card" hidden>
         <h2>Escenarios de tasa</h2>
         <div class="sc-row">
@@ -96,7 +97,7 @@
         </div>
         <label for="casos-esc-comision">Comisión del escenario (%)</label>
         <input id="casos-esc-comision" type="number" inputmode="decimal" step="any" min="0" max="100" autocomplete="off">
-        <p class="muted hint">Mejor / 2 % / Promedio por lado. El 2 % es el descuento de seguridad sobre la tasa del Bolívar (VES): solo aplica si el par toca VES.</p>
+        <p class="muted hint">Mejor / 2 % / Promedio (par con VES) o Mejor / Promedio / Máximo (par sin VES), por lado. El 2 % es el descuento de seguridad sobre la tasa del Bolívar (VES): solo aplica si el par toca VES. Máximo = mayor tasa del libro ejecutable en ese lado (no el mayor monto): en Compra es la tasa más cara y en Venta coincide con Mejor.</p>
         <div id="casos-escenario" aria-live="polite"></div>
       </div>
 

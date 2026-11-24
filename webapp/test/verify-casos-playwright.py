@@ -89,7 +89,8 @@ class RatesModel:
 
     def _ad_rate(self, code, side, amount_usd, mode):
         """adRateAt: filtra ejecutables (min<=au*price<=max y available>=au) y elige
-        best=compra[0]/venta[0], conservative=compra[-1]/venta[-1], average=media FX.
+        best=compra[0]/venta[0], conservative=compra[-1]/venta[-1],
+        max=mayor price ejecutable, average=media FX.
         Fallback: libro vacío → media; todo filtrado → null."""
         ads = self.book(code, side)
         media = self.media(code, side)
@@ -111,6 +112,9 @@ class RatesModel:
         if mode == "conservative":
             if ex: return ex[-1]
             return media if len(ads) == 0 else None
+        if mode == "max":
+            if ex: return max(ex)
+            return media if len(ads) == 0 else None
         return media
 
     def _rates(self, pair, direction, om, dm, amount_usd):
@@ -126,9 +130,10 @@ class RatesModel:
         return ro, rd
 
     def quote(self, pair, direction, om, dm, deposit=None, target=None):
-        """caseQuoteScenario: om/dm = modo del panel (best/conservative/average);
+        """caseQuoteScenario: om/dm = modo del panel (best/conservative/average/max);
         vesSafetyPct/destSafetyPct = 2% solo en el lado 'conservative' y solo si el
-        par toca VES; comisión 7% (8% si el origen es COP); dos pasadas de ads."""
+        par toca VES (Máximo cotiza sin 2%); comisión 7% (8% si el origen es COP);
+        dos pasadas de ads."""
         origin = pair[1] if direction == "BA" else pair[0]
         dest = pair[0] if direction == "BA" else pair[1]
         ves_pct = 0.02 if om == "conservative" else 0.0
@@ -200,6 +205,28 @@ print(f"[snapshot] derived (dev, 100 PEN→VES conservative/conservative): "
       f"delivered={EXPC['delivered']!r} → '{VAL_CONS}' · ro={EXPC['originRate']} · rd={EXPC['destRate']} · safety={EXPC['safetyPct']}")
 print(f"[snapshot] best-dest={EXPB_DEST['delivered']!r} · avg-dest={EXPA_DEST['delivered']!r} · "
       f"best-orig={EXPB_ORIG['delivered']!r} · inverso target={EXPC['delivered']} → deposit={EXP_REV['deposit']!r} ('{VAL_REV_DEP}')")
+# 3c: par SIN VES (PEN/COP, ba-fwd = COP→PEN): escenarios Mejor/Promedio/Máximo, default Mejor, sin 2%
+PAIR_NV = ["PEN", "COP"]
+DIRECTION_NV = "BA"
+EXP_MAX_NV = snap.quote(PAIR_NV, DIRECTION_NV, "max", "max", deposit=100.0)
+VAL_MAX_NV = fmt_app(EXP_MAX_NV["delivered"], "PEN")
+EXP_BEST_NV = snap.quote(PAIR_NV, DIRECTION_NV, "best", "best", deposit=100.0)
+VAL_BEST_NV = fmt_app(EXP_BEST_NV["delivered"], "PEN")
+# PEN→COP 100 (ab-fwd, el flujo del check 3c): cambiando a ab-fwd se cotiza en esa dirección
+EXP_PC_BEST = snap.quote(["PEN", "COP"], "AB", "best", "best", deposit=100.0)
+VAL_PC_BEST = fmt_app(EXP_PC_BEST["delivered"], "COP")
+EXP_PC_MAX = snap.quote(["PEN", "COP"], "AB", "max", "max", deposit=100.0)
+VAL_PC_MAX = fmt_app(EXP_PC_MAX["delivered"], "COP")
+print(f"[snapshot] derived (dev, 100 COP→PEN max/max): delivered={EXP_MAX_NV['delivered']!r} → '{VAL_MAX_NV}' · "
+      f"ro={EXP_MAX_NV['originRate']} · rd={EXP_MAX_NV['destRate']} · safety={EXP_MAX_NV['safetyPct']} · "
+      f"best/best='{VAL_BEST_NV}'")
+# Reporte 3c: PEN→COP 100 (ab-fwd, compra PEN / venta COP) Mejor/Promedio/Máximo desde el snapshot vivo
+EXP_PC = {}
+for m in ("best", "average", "max"):
+    EXP_PC[m] = snap.quote(["PEN", "COP"], "AB", m, m, deposit=100.0)
+print("[snapshot] PEN\u2192COP 100 (vivo): " + " · ".join(
+    f"{m}: entregado={EXP_PC[m]['delivered']!r} ro={EXP_PC[m]['originRate']} rd={EXP_PC[m]['destRate']} safety={EXP_PC[m]['safetyPct']}"
+    for m in ("best", "average", "max")))
 NUM_CONS = VAL_CONS.split(" ", 1)[1]   # parte numérica (txt del desglose llega en MAYÚSCULAS vía CSS)
 EXPC_D = snap_dist.quote(PAIR, DIRECTION, "conservative", "conservative", deposit=100.0)
 VAL_CONS_DIST = fmt_app(EXPC_D["delivered"], "VES")
@@ -303,23 +330,58 @@ with sync_playwright() as p:
     page.wait_for_timeout(300)
     check("3b: origen “2%” restaura el conservador derivado", VAL_CONS in result_text(page))
 
-    # “2% no aplica” + Reset al cambiar de par (PEN/COP no toca VES)
+    # Par SIN VES (PEN/COP, 3c): reset por par ⇒ default Mejor; botones Mejor/
+    # Promedio/Máximo (sin 2%) y etiqueta “Sin 2%” (el botón 2% no existe).
     page.click("#casos-chips [data-pair='PEN/COP']")
     page.wait_for_timeout(300)
-    check("3b: cambiar de par resetea el panel a 2%/2%",
-          esc_active(page, "#casos-esc-origin") == ["conservative"] and esc_active(page, "#casos-esc-dest") == ["conservative"],
-          f"origin={esc_active(page, '#casos-esc-origin')} dest={esc_active(page, '#casos-esc-dest')}")
+    obn = esc_buttons(page, "#casos-esc-origin"); dbn = esc_buttons(page, "#casos-esc-dest")
+    check("3c: cambiar de par sin VES resetea a Mejor/Mejor con botones Mejor/Promedio/Máximo",
+          esc_active(page, "#casos-esc-origin") == ["best"] and esc_active(page, "#casos-esc-dest") == ["best"]
+          and obn == ["Mejor", "Promedio", "Máximo"] and dbn == ["Mejor", "Promedio", "Máximo"],
+          f"origin={esc_active(page, '#casos-esc-origin')} dest={esc_active(page, '#casos-esc-dest')} ob={obn} db={dbn}")
     page.fill("#casos-monto", "100")
     page.wait_for_timeout(400)
-    check("3b: par sin VES (COP→PEN) ⇒ etiqueta “2% no aplica”",
-          "2% NO APLICA" in panel_text(page).upper(), panel_text(page)[:300].replace("\n", " | "))
+    pt_nv = panel_text(page).upper()
+    check("3c: par sin VES (COP→PEN) mejor/mejor ⇒ etiqueta “Sin 2%” (nunca “2% no aplica” ni “Aplicado”)",
+          "SIN 2%" in pt_nv and "2% NO APLICA" not in pt_nv and "APLICADO" not in pt_nv, pt_nv[:300].replace("\n", " | "))
+    check("3c: COP→PEN 100 mejor/mejor = valor derivado del snapshot vivo",
+          VAL_BEST_NV in page.inner_text("#casos-resultado"),
+          page.inner_text("#casos-resultado")[:300].replace("\n", " | "))
+    # 3c: flujo PEN→COP 100 (ab-fwd): Mejor (default) y Máximo (mayor anuncio ejecutable por lado, sin 2%)
+    page.click("#casos-modos [data-modo='ab-fwd']")
+    page.wait_for_timeout(300)
+    check("3c: modo ab-fwd activo (PEN→COP) conservando Mejor/Mejor por defecto",
+          mode_active(page) == ["ab-fwd"] and esc_active(page, "#casos-esc-origin") == ["best"]
+          and esc_active(page, "#casos-esc-dest") == ["best"])
+    page.wait_for_timeout(300)
+    check(f"3c: PEN→COP 100 Mejor/Mejor = {VAL_PC_BEST} (derivado del snapshot vivo)",
+          VAL_PC_BEST in page.inner_text("#casos-resultado"),
+          page.inner_text("#casos-resultado")[:300].replace("\n", " | "))
+    page.click("#casos-esc-origin [data-sc-mode='max']")
+    page.click("#casos-esc-dest [data-sc-mode='max']")
+    page.wait_for_timeout(400)
+    RATE4_O_PC = fmt_rate4(EXP_PC_MAX["originRate"])
+    RATE4_D_PC = fmt_rate4(EXP_PC_MAX["destRate"])
+    check(f"3c: PEN→COP 100 Máximo/Máximo = {VAL_PC_MAX} y tasas {RATE4_O_PC} PEN/US$ × {RATE4_D_PC} COP/US$ (derivado; safety={EXP_PC_MAX['safetyPct']})",
+          esc_active(page, "#casos-esc-origin") == ["max"] and esc_active(page, "#casos-esc-dest") == ["max"]
+          and VAL_PC_MAX in page.inner_text("#casos-resultado")
+          and RATE4_O_PC + " PEN / US$" in panel_text(page)
+          and RATE4_D_PC + " COP / US$" in panel_text(page)
+          and "SIN 2%" in panel_text(page).upper(),
+          (result_text(page) + panel_text(page))[:350].replace("\n", " | "))
+    check("3c: el anuncio Máximo de compra supera al Mejor en el snapshot vivo (escenario distinguible)",
+          EXP_PC_MAX["originRate"] > EXP_PC_BEST["originRate"],
+          f"max={EXP_PC_MAX['originRate']} best={EXP_PC_BEST['originRate']}")
     page.click("#casos-chips [data-pair='VES/PEN']")
     page.wait_for_timeout(300)
     page.fill("#casos-monto", "100")
     page.wait_for_timeout(400)
-    check("3b: volver a VES/PEN restaura 2%/2% y el valor conservador derivado",
-          esc_active(page, "#casos-esc-dest") == ["conservative"] and VAL_CONS in result_text(page)
-          and "APLICADO (EL PAR TOCA VES)" in panel_text(page).upper())
+    check("3b: volver a VES/PEN restaura 2%/2% (botones Mejor/2%/Promedio) y el valor conservador derivado",
+          esc_active(page, "#casos-esc-origin") == ["conservative"] and esc_active(page, "#casos-esc-dest") == ["conservative"]
+          and esc_buttons(page, "#casos-esc-origin") == ["Mejor", "2%", "Promedio"]
+          and VAL_CONS in result_text(page)
+          and "APLICADO (EL PAR TOCA VES)" in panel_text(page).upper(),
+          f"origin={esc_active(page, '#casos-esc-origin')} ob={esc_buttons(page, '#casos-esc-origin')}")
 
     # ---------- 3) Tasas → volver a Casos: selección conservada ----------
     page.click("button[data-tab='tasas']")

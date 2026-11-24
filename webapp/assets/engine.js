@@ -409,6 +409,8 @@
    * mode='best' → compra = min(price), venta = max(price).
    * mode='average' → media FX de unitsPerUsdCompra/Venta del fiat.
    * mode='conservative' → compra = max(price), venta = min(price).
+   * mode='max' → mayor price entre los anuncios ejecutables (en cualquier lado);
+   *   mismo filtro min/max/available que best/conservative.
    * Fallback: ads vacías → media FX; filtrado vacío → null.
    * Devuelve {rate, ad, source, mode} o null si no hay ads y no hay fallback.
    * `rate` es en unitsPerUsd (compra) o (venta).
@@ -452,6 +454,37 @@
           var rS = finitePositive(sellR);
           if (rS == null) return null;
           return { rate: rS, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
+        }
+      }
+      return null;
+    }
+
+    if (mode === 'max') {
+      // Máximo: mayor price entre los ejecutables (independiente del orden del libro:
+      // compra asc y venta desc dan la MISMA tasa si esa es la de mayor precio).
+      if (Array.isArray(adsArr) && adsArr.length) {
+        var maxAd = null;
+        for (var _j = 0; _j < adsArr.length; _j++) {
+          var _pMax = finitePositive(adsArr[_j] && adsArr[_j].price);
+          if (_pMax == null) continue;
+          if (maxAd == null || _pMax > finitePositive(maxAd.price)) maxAd = adsArr[_j];
+        }
+        if (maxAd != null) {
+          return { rate: finitePositive(maxAd.price), ad: maxAd, source: 'ad_max_' + side, mode: mode };
+        }
+      }
+      // Libro vacío → media FX; todo filtrado → null (el panel cae a la media).
+      if (origAds.length === 0) {
+        var buyRX = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[fiat];
+        var sellRX = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[fiat];
+        if (side === 'compra') {
+          var rX = finitePositive(buyRX);
+          if (rX == null) return null;
+          return { rate: rX, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
+        } else {
+          var rY = finitePositive(sellRX);
+          if (rY == null) return null;
+          return { rate: rY, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
         }
       }
       return null;
@@ -505,14 +538,15 @@
     }
   }
 
-  /* Calcula los tres escenarios (best/average/conservative) para origen y destino.
-   * Devuelve { best: { originRate, destRate, originAd, destAd }, average: {...}, conservative: {...} }.
+  /* Calcula los cuatro escenarios (best/average/conservative/max) para origen y destino.
+   * Devuelve { best: { originRate, destRate, originAd, destAd }, average: {...},
+   * conservative: {...}, max: {...} }.
    * `pair` = ['A','B'], `direction` = 'AB' | 'BA'.
    * `rateMode` indica qué side usar (compra/venta).
    * El 2% NO va aquí; es parámetro de cotización.
    */
   function rateScenarios(settings, fx, pair, direction, amount, rateMode, adsPair) {
-    if (!pair || !direction || !rateMode) return { best: {}, average: {}, conservative: {} };
+    if (!pair || !direction || !rateMode) return { best: {}, average: {}, conservative: {}, max: {} };
     var dir = direction === 'BA' ? 'BA' : 'AB';
     var curA = dir === 'AB' ? pair[0] : pair[1];
     var curB = dir === 'AB' ? pair[1] : pair[0];
@@ -521,7 +555,7 @@
     // `rateMode` se pasa solo para coherencia de API pero siempre es 'compra'.
     var originSide = 'compra';
     var destSide = 'venta';
-    var scenarios = { best: {}, average: {}, conservative: {} };
+    var scenarios = { best: {}, average: {}, conservative: {}, max: {} };
 
     // Obtener ads desde fx.pairs si están disponibles
     var adsA, adsB;
@@ -581,12 +615,21 @@
       scenarios.conservative.originAd = aConsO;
       scenarios.conservative.destAd = aConsD;
     }
+    // max (Máximo: mayor price ejecutable en cada lado)
+    var aMaxO = adRateAt(fx, curA, originSide, amount, 'max', adsA);
+    var aMaxD = adRateAt(fx, curB, destSide, amount, 'max', adsB);
+    if (aMaxO && aMaxD) {
+      scenarios.max.originRate = aMaxO.rate;
+      scenarios.max.destRate = aMaxD.rate;
+      scenarios.max.originAd = aMaxO;
+      scenarios.max.destAd = aMaxD;
+    }
     return scenarios;
   }
 
   /* Cotización basada en escenarios del panel (motor de escenarios).
    * Nuevos parámetros en `req`:
-   *   originMode   – 'best'|'average'|'conservative' (default: 'best')
+   *   originMode   – 'best'|'average'|'conservative'|'max' (default: 'best')
    *   destMode     – igual (default: 'best')
    *   vesSafetyPct – safety sobre tasa VES (default: 0.02). 0 = sin 2%.
    *   destSafetyPct – safety sobre tasa destino (default: 0.02).
@@ -617,6 +660,10 @@
     var destMode = req.destMode || 'best';
     var vesSafetyPct = req.vesSafetyPct != null ? req.vesSafetyPct : 0.02;
     var destSafetyPct = req.destSafetyPct != null ? req.destSafetyPct : 0.02;
+    // Máximo cotiza SIN 2% en ambos lados (el safety es del modo 2%): aunque
+    // llegue un pct o el default de 0.02, el modo 'max' lo anula.
+    if (originMode === 'max') vesSafetyPct = 0;
+    if (destMode === 'max') destSafetyPct = 0;
     var refAmount = req.referenceAmountUsd != null ? num(req.referenceAmountUsd) : 10;
     var useActual = !!req.useActualAmount;
     // Si deposit > 0, usar el monto real; si no, usar referenceAmountUsd (default 10)
