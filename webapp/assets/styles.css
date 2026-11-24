@@ -73,7 +73,7 @@ body {
 main {
   padding: 12px 14px 24px;
   width: 100%;
-  max-width: 640px;
+  max-width: 760px;
   margin: 0 auto;
 }
 
@@ -208,7 +208,7 @@ main {
 }
 @keyframes ct-spin { to { transform: rotate(360deg); } }
 
-/* Formularios: controles grandes para el pulgar */
+/* Formularios: controles compactos (3f), nunca a todo el ancho */
 label, .inlinelab, legend {
   display: block;
   font-size: 0.82rem;
@@ -223,6 +223,7 @@ label.inlinelab { margin: 0; }
 
 input, select, textarea {
   width: 100%;
+  max-width: 220px;
   min-height: 48px;
   padding: 10px 12px;
   border-radius: 12px;
@@ -247,8 +248,13 @@ fieldset {
 
 .form2col {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0 12px;
+}
+
+/* 3f: 2 columnas en desktop, 1 en móvil */
+@media (min-width: 640px) {
+  .form2col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .checkline {
@@ -404,7 +410,25 @@ details summary { cursor: pointer; color: var(--accent); font-size: 0.88rem; }
   }
 }
 
-/* Matriz de tasas (3e): tabla pares × Máximo/Mejor/Promedio/Mínimo */
+/* Botones de modo del panel de escenarios (3f): compactos, con la tasa lateral
+ * (compra origen / venta destino) dentro del botón; activo legible en fondo azul. */
+.btn-sc { min-height: 36px; padding: 4px 10px; font-size: 0.8rem; }
+.btn-sc .sc-rate {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--muted);
+}
+.btn-sc.mode-active .sc-rate { color: rgba(255, 255, 255, .88); }
+
+.hint-details { margin: 6px 0; }
+.hint-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.hint-details summary:hover, .hint-details[open] summary { color: var(--accent); }
+
+/* Matriz de tasas (3e/3f): tabla pares (dirección del usuario) × Máximo/Mejor/Promedio/Mínimo */
 .matriz-table {
   width: 100%;
   border-collapse: collapse;
@@ -423,4 +447,15 @@ details summary { cursor: pointer; color: var(--accent); font-size: 0.88rem; }
 .matriz-table thead th {
   color: var(--muted);
   font-size: 0.85rem;
+}
+/* P1 móvil: la matriz cabe recortada min-content > viewport; scrollea dentro
+ * de su caja (.matriz-scroll) mientras el documento sigue sin scroll
+ * horizontal (html,body overflow-x:hidden). */
+.matriz-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 639px) {
+  .matriz-table { font-size: 0.8rem; }
+  .matriz-table th, .matriz-table td { padding: 4px; }
 }

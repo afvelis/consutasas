@@ -306,6 +306,41 @@ function makeSandbox(payload) {
     filaPENCOP.slice(0, 400));
   check('3e matriz: la celda Mejor respeta el filtro de 40 US$ eq (descarta ads con disp 30 < 40 → 3,40, no 3,00)',
     filaPENCOP.indexOf('1.400,0000') < 0, matrizHtml.slice(0, 300));
+  /* 3f: dirección del USUARIO — filas A/B en el orden PEN/VES, COP/VES,
+   * CLP/VES, MXN/VES, PEN/COP, PEN/CLP, COP/CLP y la celda SIEMPRE es la tasa
+   * B por A (VES por PEN), NUNCA la inversa del par guardado (VES/PEN). */
+  const filas3f = (matrizHtml.match(/<tr><td>([A-Z]{3}\/[A-Z]{3})<\/td>/g) || []).map(s => s.replace(/<\/?t[d/r]>|<tr><td>|<\/td>/g, ''));
+  check('3f matriz: filas en dirección del usuario (PEN/VES, COP/VES, CLP/VES, MXN/VES, PEN/COP, PEN/CLP, COP/CLP)',
+    matrizHtml.match(/<tr><td>/g).length === 7 &&
+    filas3f.join(',') === 'PEN/VES,COP/VES,CLP/VES,MXN/VES,PEN/COP,PEN/CLP,COP/CLP',
+    matrizHtml.slice(0, 500));
+  const filaPENVES = (matrizHtml.match(/<tr><td>PEN\/VES<\/td>([\s\S]*?)<\/tr>/) || [])[1] || '';
+  const filaCOPVES = (matrizHtml.match(/<tr><td>COP\/VES<\/td>([\s\S]*?)<\/tr>/) || [])[1] || '';
+  check('3f matriz: PEN/VES = Bs por PEN (venta VES / compra PEN), no S/ por Bs (la inversa actual)',
+    filaPENVES.indexOf('323,8235') >= 0 &&   // Mejor: 1.101 / 3,40 (compra PEN descarta 3,00 con disp 30 < 40)
+    filaPENVES.indexOf('317,6301') >= 0 &&   // Máximo: 1.099 / 3,46 (terceros por plataforma)
+    filaPENVES.indexOf('320,5739') >= 0 &&   // Promedio: 1.098,5 / 3,4267 (redondeo del motor)
+    filaPENVES.indexOf('322,3529') >= 0 &&   // Mínimo: 1.096 / 3,40
+    filaPENVES.indexOf('0,0031') < 0 &&      // la inversa (PEN por VES) no aparece
+    filaPENVES.indexOf('0,0030') < 0,
+    filaPENVES.slice(0, 400));
+  check('3f matriz: COP/VES = Bs por COP (venta VES / compra COP), no COP por Bs',
+    filaCOPVES.indexOf('0,2753') >= 0 &&   // Mejor: 1.101 / 4.000
+    filaCOPVES.indexOf('0,2727') >= 0 &&   // Máximo: 1.099 / 4.030
+    filaCOPVES.indexOf('0,2737') >= 0 &&   // Promedio: 1.098,5 / 4.013,3333
+    /0,2740?\b/.test(filaCOPVES),          // Mínimo: 1.096 / 4.000 (es-VE recorta ceros: 0,274)
+    filaCOPVES.slice(0, 400));
+  check('3f matriz: la explicación vive en «Detalle» (<details><summary>) discreto, no siempre visible',
+    /<details class="hint-details"><summary>Detalle<\/summary>/.test(matrizHtml) &&
+    /Celda = unidades de B por 1 A/.test(matrizHtml) &&
+    matrizHtml.indexOf('Matriz de tasas') < matrizHtml.indexOf('<details class="hint-details"'),
+    matrizHtml.slice(-500));
+  check('3f matriz P1/P2: tabla envuelta en .matriz-scroll (scroll interno móvil) y nota visible fuera del Detalle (Casos: orden de depósito; Matriz: A/B)',
+    /<div class="matriz-scroll"><table class="matriz-table"/.test(matrizHtml) &&
+    matrizHtml.indexOf('</table></div>') > matrizHtml.indexOf('<div class="matriz-scroll"') &&
+    /Casos: orden de dep[oó]sito; Matriz: A\/B/.test(matrizHtml) &&
+    matrizHtml.indexOf('Casos: orden de dep') < matrizHtml.indexOf('<details class="hint-details"'),
+    matrizHtml.slice(0, 400));
   (matrizBtn.__listeners['click'] || []).forEach(fn => fn());
   check('3e matriz: toggle oculta y el botón vuelve a «Matriz»',
     documentStub.getElementById('ta-matriz').hidden === true && matrizBtn.textContent === 'Matriz');

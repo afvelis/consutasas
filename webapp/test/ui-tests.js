@@ -305,6 +305,18 @@ try {
     escOriginHtml.match(/aria-pressed=/g).length === 4 && escDestHtml.match(/aria-pressed=/g).length === 4 &&
     escOriginHtml.match(/aria-pressed="true"/g).length === 1 && escDestHtml.match(/aria-pressed="true"/g).length === 1 &&
     /aria-pressed="false"/.test(escOriginHtml) && /aria-pressed="false"/.test(escDestHtml));
+  /* 3f: tasa lateral DENTRO de cada botón (compacto) + aria-label con la tasa.
+   * Sin ads (FIXTURE): cae a la media FX del snapshot (compra origen 3,50
+   * PEN/US$; venta destino 1.100,00 VES/US$), igual que el desglose usa. */
+  check('3f: cada botón de modo muestra su tasa lateral dentro del botón (compra origen 3,50 / venta destino 1.100,00 con media FX)',
+    (escOriginHtml.match(/<span class="sc-rate">3,50<\/span>/g) || []).length === 4 &&
+    (escDestHtml.match(/<span class="sc-rate">1\.100,00<\/span>/g) || []).length === 4 &&
+    escOriginHtml.indexOf('btn-sc') >= 0, escOriginHtml.slice(0, 600));
+  check('3f: aria-label de los 8 botones incluye la tasa lateral y el lado (compra PEN / venta VES)',
+    (escOriginHtml.match(/aria-label="[^\"]*compra PEN 3,50 PEN\/US\$"/g) || []).length === 4 &&
+    (escDestHtml.match(/aria-label="[^\"]*venta VES 1\.100,00 VES\/US\$"/g) || []).length === 4 &&
+    /aria-label="Mejor — compra PEN/.test(escOriginHtml) && /aria-label="Máximo — venta VES/.test(escDestHtml),
+    escDestHtml.slice(0, 600));
   const escOut1 = sandbox.document.getElementById('casos-escenario').innerHTML;
   check('3e: desglose PEN→VES 100 @7% Mejor: monto final 29.228,57 Bs (aria-live en el contenedor)',
     escOut1.indexOf('29.228,57') >= 0 && /Monto final/.test(escOut1), escOut1.slice(0, 500));
@@ -616,6 +628,30 @@ try {
   CT.setEscenarioModo('dest', 'best'); // vuelve al default (también persiste)
   // Simular teclear en el input manual: disparar los listeners 'input' del DOM simulado.
   const typeManual = id => (documentStub.getElementById(id).__listeners['input'] || []).forEach(fn => fn());
+  /* 3f LIVE (manual): teclear la tasa manual debe repintar el desglose y el
+   * factor AL INSTANTE (solo el evento input, sin llamada manual a render*).
+   * Sistema venta (Mejor sin ads) = 1.100 → manual 1.070: factor +2,73 % y
+   * monto final recalculado (28.420,00 VES con compra 3,50 @7%). */
+  sandbox.document.getElementById('casos-monto').value = '100';
+  CT.renderResultado(); CT.renderEscenario();
+  const liveBefore = sandbox.document.getElementById('casos-resultado').innerHTML;
+  const livePanelBefore = sandbox.document.getElementById('casos-escenario').innerHTML;
+  escDmIn.value = '1070';
+  typeManual('casos-esc-dest-manual');
+  const liveResult = sandbox.document.getElementById('casos-resultado').innerHTML;
+  const livePanel = sandbox.document.getElementById('casos-escenario').innerHTML;
+  check('3f live: escribir la tasa manual destino repinta el desglose y el panel al instante (sin render manual)',
+    liveResult !== liveBefore && livePanel !== livePanelBefore &&
+    /manual \(manda la tasa ingresada\)/.test(livePanel) &&
+    /2,73 %/.test(livePanel) && livePanel.indexOf('1.070,00') >= 0,
+    livePanel.slice(0, 600));
+  check('3f live: el desglose cotiza con la manual (venta 1.070 → monto final 28.431,43, no 29.228,57)',
+    liveResult.indexOf('28.431,43') >= 0 && liveResult.indexOf('29.228,57') < 0,
+    liveResult.slice(0, 500));
+  check('3f live: limpiar la manual repinta al valor del sistema (29.228,57)',
+    (escDmIn.value = '', typeManual('casos-esc-dest-manual'),
+      sandbox.document.getElementById('casos-resultado').innerHTML.indexOf('29.228,57') >= 0),
+    sandbox.document.getElementById('casos-resultado').innerHTML.slice(0, 400));
   escOmIn.value = '3.4';
   typeManual('casos-esc-origin-manual');
   const casoManual = JSON.parse(ls.getItem('ct_caso') || ss.getItem('ct_caso') || 'null');
@@ -1096,6 +1132,24 @@ try {
   check('index.html: la comisión del panel inicia vacía (default desde defaultCommissionPct, sin value fijo)',
     !/casos-esc-comision"[^>]*value=/.test(indexSrc) &&
     !/SC_COMMISSION_DEFAULT/.test(fs.readFileSync(path.join(__dirname, '..', 'assets', 'app.js'), 'utf8')));
+  /* ---- 3f: Detalle discreto + layout centrado/simétrico ---- */
+  const stylesSrc = fs.readFileSync(path.join(__dirname, '..', 'assets', 'styles.css'), 'utf8');
+  const idxCard = indexSrc.indexOf('casos-escenario-card');
+  check('3f index: el párrafo largo de “Escenarios de tasa” vive en <details><summary>Detalle</summary> (no siempre visible)',
+    idxCard >= 0 &&
+    indexSrc.indexOf('<details class="hint-details"><summary>Detalle</summary>', idxCard) > idxCard &&
+    /<\/details>/.test(indexSrc.slice(indexSrc.indexOf('<details class="hint-details"', idxCard))),
+    indexSrc.slice(idxCard, idxCard + 300));
+  check('3f layout: contenido centrado ~760px (main max-width) y simétrico (margin auto)',
+    /max-width:\s*760px/.test(stylesSrc) && /margin:\s*0 auto/.test(stylesSrc));
+  check('3f layout: inputs compactos (max-width 180-240px), nunca a todo el ancho',
+    /input, select, textarea\s*\{[^}]*max-width:\s*220px/.test(stylesSrc),
+    stylesSrc.slice(stylesSrc.indexOf('input, select, textarea'), stylesSrc.indexOf('input, select, textarea') + 200));
+  check('3f layout: rejilla de formularios 2 columnas en desktop (≥640px) y 1 en móvil',
+    /.form2col\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/.test(stylesSrc) &&
+    /@media \(min-width: 640px\)\s*\{\s*\.form2col \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/.test(stylesSrc));
+  check('3f layout: botones de modo compactos (.btn-sc) y sin scroll horizontal (overflow-x hidden en body)',
+    /\.btn-sc \{ min-height: 36px/.test(stylesSrc) && /overflow-x: hidden/.test(stylesSrc));
 
   /* ---- sin inline en el HTML servido ni en lo renderizado ---- */
   check('index.html sin manejadores inline ni <script> embebido',

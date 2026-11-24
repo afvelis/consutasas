@@ -30,11 +30,20 @@ def esc_active(page, cont):
         cont + " .mode-active", "els => els.map(e => e.dataset.scMode)")
 
 def esc_buttons(page, cont):
+    # 3f: cada botón de modo lleva SU tasa lateral dentro ("Máximo 3,50"):
+    # devolvemos (nombre, texto completo, aria-label) para poder validar ambos.
     return page.eval_on_selector_all(
-        cont + " [data-sc-mode]", "els => els.map(e => e.textContent.trim())")
+        cont + " [data-sc-mode]",
+        "els => els.map(e => [e.textContent.trim(), e.getAttribute('aria-label') || ''])")
 
 def panel_text(page):
     return page.inner_text("#casos-escenario")
+
+def esc_modes_of(btns):
+    return [b[0].split(' ')[0] for b in btns]
+
+def esc_labels_of(btns, side, currency):
+    return [b[1] for b in btns if side in b[1] and currency in b[1]]
 
 # ==================== modelo del snapshot (misma fórmula que el motor 3b) ====================
 # Réplica en Python de CTEngine.caseQuoteScenario (assets/engine.js) con los ads que la
@@ -74,6 +83,26 @@ def fmt_rate4(v):
     frac = frac.rstrip("0") or "00"
     if len(frac) < 2: frac += "0"
     return head.replace(",", ".") + "," + frac
+
+def fmt_rate_btn(v):
+    """Tasa lateral compacta del botón (3f): fmt(v, >=1000→2 dec, si no 4) —
+    es-VE recorta ceros (mínimo 2 decimales)."""
+    v = float(v)
+    dec = 2 if abs(v) >= 1000 else 4
+    s = f"{v:,.{dec}f}"
+    head, frac = s.split(".")
+    frac = frac.rstrip("0") or "00"
+    if len(frac) < 2: frac += "0"
+    return head.replace(",", ".") + "," + frac
+
+def fmt2(v):
+    """fmt(v, 2) (app.js): es-VE, 2 decimales fijos."""
+    s = f"{float(v):,.2f}"
+    return s.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+
+def parse_cell(c):
+    """Número es-VE ('1.235,2941') → float."""
+    return float(str(c).replace(".", "").replace(",", "."))
 
 class RatesModel:
     def __init__(self, rates):
@@ -207,6 +236,17 @@ class RatesModel:
         delivered = _r2(net_usd * rd)
         return {"deposit": dep, "delivered": delivered, "originRate": ro, "destRate": rd}
 
+def matriz_cell(model, origin, dest, mode):
+    """Celda de la matriz 3f = tasa B por A (venta dest / compra orig) a 40 US$ eq.
+    Replica matrizFx/renderMatriz (tasas.js): compra del ORIGEN, venta del DESTINO."""
+    ro = model._ad_rate(origin, "compra", 40.0, mode)
+    rd = model._ad_rate(dest, "venta", 40.0, mode)
+    if ro is None or rd is None:
+        return None  # la cura muestra '—' cuando el motor no da tasa (nunca inventa)
+    return fmt_rate4(rd / ro)
+
+ROWS_3F = ["PEN/VES", "COP/VES", "CLP/VES", "MXN/VES", "PEN/COP", "PEN/CLP", "COP/CLP"]
+
 def load_snapshot(path):
     with open(path, encoding="utf-8") as fh:
         return RatesModel(json.load(fh))
@@ -302,9 +342,29 @@ with sync_playwright() as p:
     # ---------- 1b) panel 3e: 8 botones (matriz), default “Mejor” ----------
     check("3e: panel de escenarios visible para VES/PEN", page.eval_on_selector("#casos-escenario-card", "e => !e.hidden"))
     ob = esc_buttons(page, "#casos-esc-origin"); db = esc_buttons(page, "#casos-esc-dest")
-    check("3e: 8 botones (Compra=origen / Venta=destino × Máximo/Mejor/Promedio/Mínimo)",
-          ob == ["Máximo", "Mejor", "Promedio", "Mínimo"] and db == ["Máximo", "Mejor", "Promedio", "Mínimo"],
-          f"origin={ob} dest={db}")
+    check("3e: 8 botones (Compra=origen / Venta=destino × Máximo/Mejor/Promedio/Mínimo) — 3f compactos con tasa",
+          esc_modes_of(ob) == ["Máximo", "Mejor", "Promedio", "Mínimo"] and esc_modes_of(db) == ["Máximo", "Mejor", "Promedio", "Mínimo"],
+          f"origin={esc_modes_of(ob)} dest={esc_modes_of(db)}")
+    # 3f: cada botón de modo lleva SU tasa lateral (compra origen / venta destino)
+    # a 40 US$ eq (con fallback media FX si el modo no da tasa — nunca inventa).
+    def lateral(model, code, side, mode):
+        r = model._ad_rate(code, side, 40.0, mode)
+        if r is None:
+            r = model.media(code, side)
+        return fmt_rate_btn(r) if r else None
+    PEN_O = {m: lateral(snap, "PEN", "compra", m) for m in ("max", "best", "average", "min")}
+    VES_D = {m: lateral(snap, "VES", "venta", m) for m in ("max", "best", "average", "min")}
+    MODE_LBL = {"max": "Máximo", "best": "Mejor", "average": "Promedio", "min": "Mínimo"}
+    def btn_texts(btns):
+        return [b[0].replace("\n", " ").strip() for b in btns]
+    check("3f: tasa lateral dentro de cada botón (compra origen PEN / venta destino VES, 40 US$ eq)",
+          btn_texts(ob) == [f"{MODE_LBL[m]} {PEN_O[m]}" for m in ("max", "best", "average", "min")] and
+          btn_texts(db) == [f"{MODE_LBL[m]} {VES_D[m]}" for m in ("max", "best", "average", "min")],
+          f"origin={btn_texts(ob)} esperado={[f'{MODE_LBL[m]} {PEN_O[m]}' for m in ('max','best','average','min')]}")
+    check("3f: aria-label de los botones declara el lado y la tasa (compra PEN … PEN/US$ · venta VES … VES/US$)",
+          all(f"compra PEN {PEN_O[m]} PEN/US$" in b[1] for m, b in zip(("max", "best", "average", "min"), ob)) and
+          all(f"venta VES {VES_D[m]} VES/US$" in b[1] for m, b in zip(("max", "best", "average", "min"), db)),
+          str(ob[1][1] + " | " + db[0][1]))
     check("3e: default “Mejor” activo en ambos lados",
           esc_active(page, "#casos-esc-origin") == ["best"] and esc_active(page, "#casos-esc-dest") == ["best"],
           f"origin={esc_active(page, '#casos-esc-origin')} dest={esc_active(page, '#casos-esc-dest')}")
@@ -405,7 +465,7 @@ with sync_playwright() as p:
     obn = esc_buttons(page, "#casos-esc-origin"); dbn = esc_buttons(page, "#casos-esc-dest")
     check("3c: cambiar de par sin VES resetea a Mejor/Mejor con botones Máximo/Mejor/Promedio/Mínimo",
           esc_active(page, "#casos-esc-origin") == ["best"] and esc_active(page, "#casos-esc-dest") == ["best"]
-          and obn == ["Máximo", "Mejor", "Promedio", "Mínimo"] and dbn == ["Máximo", "Mejor", "Promedio", "Mínimo"],
+          and esc_modes_of(obn) == ["Máximo", "Mejor", "Promedio", "Mínimo"] and esc_modes_of(dbn) == ["Máximo", "Mejor", "Promedio", "Mínimo"],
           f"origin={esc_active(page, '#casos-esc-origin')} dest={esc_active(page, '#casos-esc-dest')} ob={obn} db={dbn}")
     page.fill("#casos-monto", "100")
     page.wait_for_timeout(400)
@@ -446,9 +506,102 @@ with sync_playwright() as p:
     page.wait_for_timeout(400)
     check("3e: volver a VES/PEN restaura Mejor/Mejor (8 botones) y el valor derivado",
           esc_active(page, "#casos-esc-origin") == ["best"] and esc_active(page, "#casos-esc-dest") == ["best"]
-          and esc_buttons(page, "#casos-esc-origin") == ["Máximo", "Mejor", "Promedio", "Mínimo"]
+          and esc_modes_of(esc_buttons(page, "#casos-esc-origin")) == ["Máximo", "Mejor", "Promedio", "Mínimo"]
           and VAL_BB in result_text(page),
-          f"origin={esc_active(page, '#casos-esc-origin')} ob={esc_buttons(page, '#casos-esc-origin')}")
+          f"origin={esc_active(page, '#casos-esc-origin')} ob={esc_modes_of(esc_buttons(page, '#casos-esc-origin'))}")
+
+    # ---------- 2b-3f) LIVE manual: escribir la tasa manual repinta al instante ----------
+    _sysO = snap._ad_rate("PEN", "compra", 40.0, "best")
+    _destBest = snap._ad_rate("VES", "venta", 40.0, "best")
+    _manual_rate = round(_sysO * 0.98, 2)  # manual < sistema → factor positivo (descuento)
+    _manual_delivered = fmt_app(_r2((100 / _manual_rate) * (1 - 0.07) * _destBest), "VES")
+    res_before_manual = page.inner_text("#casos-resultado")
+    page.fill("#casos-esc-origin-manual", str(_manual_rate))
+    page.wait_for_timeout(250)
+    _factor = ((_sysO - _manual_rate) / _sysO) * 100
+    check(f"3f live: escribir manual compra {_manual_rate} repinta desglose y factor al instante (sin pulsar nada)",
+          page.inner_text("#casos-resultado") != res_before_manual and
+          VAL_BB not in page.inner_text("#casos-resultado") and
+          _manual_delivered in page.inner_text("#casos-resultado") and
+          "manual (manda la tasa ingresada)" in panel_text(page) and
+          fmt2(_factor) in panel_text(page),
+          (result_text(page)[:260] + " || " + panel_text(page)[:260]).replace("\n", " | "))
+    page.fill("#casos-esc-origin-manual", "")
+    page.wait_for_timeout(250)
+    check("3f live: limpiar la manual repinta el desglose al valor del sistema al instante",
+          VAL_BB in result_text(page) and "manual (manda la tasa ingresada)" not in panel_text(page),
+          result_text(page)[:200].replace("\n", " | "))
+
+    # ---------- 2b-3f) Detalle discreto + layout ----------
+    check("3f: el párrafo largo va dentro de <details><summary>Detalle</summary> (no siempre visible)",
+          page.eval_on_selector_all("#casos-escenario-card details.hint-details",
+                                    "els => els.map(e => e.querySelector('summary').textContent.trim())") == ["Detalle"] and
+          "Matriz por lado" in page.eval_on_selector("#casos-escenario-card details.hint-details", "e => e.textContent"), "")
+    check("3f layout: main centrado max-width 760px y sin scroll horizontal",
+          page.evaluate("getComputedStyle(document.querySelector('main')).maxWidth") == "760px" and
+          page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"),
+          page.evaluate("getComputedStyle(document.querySelector('main')).maxWidth"))
+    check("3f layout: los inputs del caso no van a todo el ancho (max-width 220px)",
+          page.evaluate("getComputedStyle(document.getElementById('casos-monto')).maxWidth") == "220px" and
+          page.evaluate("getComputedStyle(document.getElementById('casos-obs')).maxWidth") == "220px",
+          page.evaluate("getComputedStyle(document.getElementById('casos-monto')).maxWidth"))
+
+    # ---------- 2c) Tasas: Matriz 3f (dirección del usuario: celda = B por A) ----------
+    page.click("button[data-tab='tasas']")
+    page.click("#btn-matriz")
+    page.wait_for_timeout(300)
+    mrows = page.eval_on_selector_all(
+        "#ta-matriz .matriz-table tbody tr",
+        "trs => trs.map(tr => Array.from(tr.children).map(td => td.textContent.trim()))")
+    check("3f matriz: filas en dirección del usuario (PEN/VES … COP/CLP), no la inversa guardada (VES/PEN)",
+          [r[0] for r in mrows] == ROWS_3F, str([r[0] for r in mrows]))
+    exp_penv = {m: matriz_cell(snap, "PEN", "VES", m) for m in ("max", "best", "average", "min")}
+    exp_copv = {m: matriz_cell(snap, "COP", "VES", m) for m in ("max", "best", "average", "min")}
+    print(f"[snapshot] matriz PEN/VES (Bs por PEN): MAX {exp_penv['max']} BEST {exp_penv['best']} AVG {exp_penv['average']} MIN {exp_penv['min']}")
+    print(f"[snapshot] matriz COP/VES (Bs por COP): MAX {exp_copv['max']} BEST {exp_copv['best']} AVG {exp_copv['average']} MIN {exp_copv['min']}")
+    check(f"3f matriz: PEN/VES = Bs por PEN — MAX {exp_penv['max']} BEST {exp_penv['best']} AVG {exp_penv['average']} MIN {exp_penv['min']} (derivado del snapshot vivo)",
+          mrows[0][1:] == [exp_penv[m] for m in ("max", "best", "average", "min")],
+          f"got={mrows[0][1:]} exp={[exp_penv[m] for m in ('max','best','average','min')]}" if mrows else "sin filas")
+    check(f"3f matriz: COP/VES = Bs por COP — MAX {exp_copv['max']} BEST {exp_copv['best']} AVG {exp_copv['average']} MIN {exp_copv['min']} (derivado del snapshot vivo)",
+          mrows[1][1:] == [exp_copv[m] for m in ("max", "best", "average", "min")],
+          f"got={mrows[1][1:]} exp={[exp_copv[m] for m in ('max','best','average','min')]}" if mrows else "sin filas")
+    check("3f matriz: la tasa inversa NO aparece (PEN/VES > 1 y COP/VES < 1 Bs, con cota B por A)",
+          all(parse_cell(c) > 1 for c in mrows[0][1:] if c != "—") and
+          all(parse_cell(c) < 1 for c in mrows[1][1:] if c != "—"),
+          str(mrows[0][:3]) if mrows else "")
+    check("3f matriz: hint dentro de <details><summary>Detalle</summary> en la tabla",
+          page.eval_on_selector_all("#ta-matriz details.hint-details",
+                                    "els => els.map(e => e.querySelector('summary').textContent.trim())") == ["Detalle"] and
+          "Celda = unidades de B por 1 A" in page.eval_on_selector("#ta-matriz details.hint-details", "e => e.textContent"), "")
+    page.screenshot(path="/tmp/shot-matriz.png", full_page=True)
+
+    # ---------- 2c-3f) P1 móvil: la matriz scrollea dentro de su caja (375px) ----------
+    page.set_viewport_size({"width": 375, "height": 800})
+    page.wait_for_timeout(200)
+    sc375 = page.evaluate("""() => {
+      const d = document.documentElement;
+      const box = document.querySelector('#ta-matriz .matriz-scroll');
+      const cell = document.querySelector('#ta-matriz .matriz-table tbody tr:last-child td:last-child');
+      if (!box || !cell) return { missing: true };
+      box.scrollLeft = box.scrollWidth;
+      const r = cell.getBoundingClientRect();
+      return { scrollWidth: d.scrollWidth, innerWidth: window.innerWidth,
+               boxOverflowX: getComputedStyle(box).overflowX,
+               boxScrollable: box.scrollWidth > box.clientWidth, lastRight: r.right };
+    }""")
+    MATRIZ_375 = json.dumps(sc375)
+    print(f"[matriz 375px] {MATRIZ_375}")
+    page.screenshot(path="/tmp/shot-matriz-375.png", full_page=True)
+    check("3f matriz 375px: documento sin scroll horizontal (scrollWidth <= innerWidth+1) y columna Mínimo alcanzable (scrollea solo dentro de .matriz-scroll)",
+          not sc375.get("missing") and
+          sc375["scrollWidth"] <= sc375["innerWidth"] + 1 and
+          sc375["boxOverflowX"] == "auto" and
+          sc375["lastRight"] <= sc375["innerWidth"] + 1,
+          MATRIZ_375)
+    page.set_viewport_size({"width": 1280, "height": 720})
+    page.wait_for_timeout(200)
+
+    page.click("#btn-matriz")  # cierra la matriz
 
     # ---------- 3) Tasas → volver a Casos: selección conservada ----------
     page.click("button[data-tab='tasas']")
@@ -512,9 +665,9 @@ with sync_playwright() as p:
     check("dist: modo activo presente", modos2 == ["ba-fwd"], f"modos={modos2}")
     db2 = esc_buttons(page2, "#casos-esc-dest")
     check("dist: 3e presente con 8 botones y default “Mejor” en ambos lados",
-          db2 == ["Máximo", "Mejor", "Promedio", "Mínimo"]
+          esc_modes_of(db2) == ["Máximo", "Mejor", "Promedio", "Mínimo"]
           and esc_active(page2, "#casos-esc-origin") == ["best"]
-          and esc_active(page2, "#casos-esc-dest") == ["best"], f"dest={db2}")
+          and esc_active(page2, "#casos-esc-dest") == ["best"], f"dest={esc_modes_of(db2)}")
     page2.fill("#casos-monto", "100")
     page2.wait_for_timeout(400)
     txtD = page2.inner_text("#casos-resultado").upper()

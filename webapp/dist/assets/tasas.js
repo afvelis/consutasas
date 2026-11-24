@@ -611,10 +611,19 @@
     btn.addEventListener('click', saveConfig);
   }
 
-  // ==================== Matriz de pares × MAX/BEST/AVG/MIN (3e) ====================
-  // Botón «Matriz» junto a «Forzar bot»: tabla de pares dirigibles A↔B cota A→B
-  // con los 4 modos a 40 USD equivalentes. Celda = tasa cruzada destRate/originRate
-  // (unidades de B por unidad de A); solo el valor, sin detalles. Sin inline (CSP).
+  // ==================== Matriz de pares × MAX/BEST/AVG/MIN (3e/3f) ====================
+  // Botón «Matriz» junto a «Forzar bot»: tabla de pares en dirección del usuario
+  // (A/B) con los 4 modos a 40 USD equivalentes. La celda SIEMPRE es la tasa
+  // cruzada B por A (cotiza A→B: VES por PEN, VES por COP…), NUNCA la inversa:
+  // cada par no dirigido se normaliza con RANK (fuerza PEN>COP>CLP>MXN como
+  // origen, siempre con VES como destino=B/último) y orden de filas: X/VES
+  // primero y luego PEN/COP, PEN/CLP, COP/CLP. Solo valores; la explicación
+  // vive dentro de «Detalle» (discreto). Sin inline (CSP).
+  var RANK = { PEN: 0, COP: 1, CLP: 2, MXN: 3, VES: 4 }; // resto de monedas (USD/EUR) al final
+  function rankOf(code) { return RANK[code] != null ? RANK[code] : 5; }
+  function canonDir(pair) {
+    return rankOf(pair[0]) > rankOf(pair[1]) ? [pair[1], pair[0]] : [pair[0], pair[1]];
+  }
   function matrizFx(origin, dest) {
     if (!S.fx) return null;
     if (!S.rates) return S.fx;
@@ -648,18 +657,37 @@
       if (s && s.originRate != null && s.destRate != null) return num(s.destRate / s.originRate, 4);
       return '<span class="muted">—</span>';
     };
-    const rows = all.map(function (pair) {
-      const fxPair = matrizFx(pair[0], pair[1]);
-      const scn = eng.rateScenarios(st, fxPair, pair, 'AB', 40, 'compra');
-      return '<tr><td>' + esc(pair[0] + '/' + pair[1]) + '</td>' +
-        modes.map(function (m) { return '<td>' + cell(scn, m.id) + '</td>'; }).join('') + '</tr>';
-    }).join('');
+    // Dirección del usuario: el par no dirigido se normaliza (celda = B por A)
+    // y las filas se ordenan PEN/VES, COP/VES, CLP/VES, MXN/VES, PEN/COP,
+    // PEN/CLP, COP/CLP (cota del RANK; los pares del usuario quedan al final).
+    const rows = all.map(canonDir)
+      .sort(function (x, y) {
+        // X/VES primero (grupo 0), luego el resto por fuerza (PEN>COP>CLP>MXN).
+        var gx = rankOf(x[1]) === 4 && rankOf(x[0]) < 4 ? 0 : 1;
+        var gy = rankOf(y[1]) === 4 && rankOf(y[0]) < 4 ? 0 : 1;
+        if (gx !== gy) return gx - gy;
+        if (x[0] !== y[0]) return rankOf(x[0]) - rankOf(y[0]);
+        return rankOf(x[1]) - rankOf(y[1]);
+      })
+      .map(function (pair) {
+        const fxPair = matrizFx(pair[0], pair[1]);
+        const scn = eng.rateScenarios(st, fxPair, pair, 'AB', 40, 'compra');
+        return '<tr><td>' + esc(pair[0] + '/' + pair[1]) + '</td>' +
+          modes.map(function (m) { return '<td>' + cell(scn, m.id) + '</td>'; }).join('') + '</tr>';
+      }).join('');
+    // P2: nota visible (fuera del Detalle) — los chips de Casos mantienen el
+    // orden de depósito (el modo por defecto deposita B del par), la matriz
+    // usa el orden canónico A/B; no se reetiquetan los chips para no romper
+    // la semántica de depósito ni ct_caso.
     holder.innerHTML = '<div class="card"><h2>Matriz de tasas</h2>' +
-      '<table class="matriz-table"><thead><tr><th scope="col">Par (A/B)</th>' +
+      '<p class="muted hint">Casos: orden de depósito; Matriz: A/B (la celda es B por A).</p>' +
+      '<div class="matriz-scroll"><table class="matriz-table"><thead><tr><th scope="col">Par (A→B)</th>' +
       modes.map(function (m) { return '<th scope="col">' + esc(m.label) + '</th>'; }).join('') +
-      '</tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<p class="muted hint">Tasa cruzada B por A (cotiza A→B) con la matriz Máximo/Mejor/Promedio/Mínimo evaluada a 40 US$ equivalentes: en la matriz, Promedio y Mínimo usan ese mismo monto de referencia de 40 US$, no el monto real del caso (el panel Casos sí usa el monto real). Máximo (tercer anuncio) = tercer anuncio de la lista por defecto de Binance y Bybit (mayor de los dos): como no pasa por el filtro de ejecutabilidad, puede quedar por debajo del Mejor (el mejor anuncio ejecutable a 40 US$).</p>' +
-      '</div>';
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<details class="hint-details"><summary>Detalle</summary>' +
+      '<p class="muted hint">Celda = unidades de B por 1 A (cotiza A→B: PEN/VES entrega VES por PEN). ' +
+      'Matriz Máximo/Mejor/Promedio/Mínimo a 40 US$ equivalentes: en la matriz, Promedio y Mínimo usan ese mismo monto de referencia de 40 US$, no el monto real del caso (el panel Casos sí usa el monto real). Máximo (tercer anuncio) = tercer anuncio de la lista por defecto de Binance y Bybit (mayor de los dos): como no pasa por el filtro de ejecutabilidad, puede quedar por debajo del Mejor (el mejor anuncio ejecutable a 40 US$).</p>' +
+      '</details></div>';
   }
 
   function bindMatriz() {
