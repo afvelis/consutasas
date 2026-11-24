@@ -13,8 +13,9 @@
  * 3b/3e: panel de escenarios en Casos (8 botones por lado con aria-pressed:
  * Máximo/Mejor/Promedio/Mínimo — la matriz 3e — en cualquier par, default Mejor;
  * Mejor se evalúa a 40 USD equivalentes (min/price ≤ 40 ≤ max/price, disp ≥ 40);
- * Máximo = tercer anuncio de la lista por defecto de cada plataforma (Binance/
- * Bybit), mayor de los dos; el 2 % VES está ELIMINADO), comisión editable
+ * Máximo = 3g: el mayor precio de TODOS los anuncios del lado (ya no el tercer
+ * anuncio por plataforma); Promedio = media aritmética de todos los anuncios;
+ * Mínimo = el menor precio de todos — MAX ≥ AVG ≥ MIN por construcción;), comisión editable
  * default 7 % (8 % COP), recálculo con ads, aviso si el libro no cubre el monto,
  * tasa pactada efectiva, tasas manuales por lado con factor de seguridad
  * (sistema − manual)/sistema × 100 (negativo = recargo, visible, no rechaza),
@@ -333,63 +334,79 @@ try {
   check('3b: sin ads → aviso claro estilo warnline (nunca inventa)',
     /warnline/.test(escOut1) && /Sin libro de anuncios/.test(escOut1));
 
-  // Cambio de modo recalcula: snapshot temporal con ads de precio (PEN compra asc
-  // 3.50→3.75, VES venta desc 1100→1080).
+  // Cambio de modo recalcula: snapshot temporal con ads de precio. Criterio
+  // conservador de Mejor (3g): compra = MAYOR ejecutable a 40 US$ eq, venta =
+  // MENOR ejecutable. El extremo del libro no es ejecutable en cada lado
+  // (compra 3,80 con min 200 > 40×3,80; venta 1.070 con max 5.000 < 40×1.070)
+  // para que BEST ≠ MAX/MIN sí sea distinguible: compra best 3,75 < max 3,80 ·
+  // venta best 1.080 > min 1.070.
   const ratesSinAds = CT.S.rates, fxSinAds = CT.S.fx;
   const ratesAds = JSON.parse(JSON.stringify(ratesSinAds));
   ratesAds.pairs.PEN.ads = {
-    compra: [{ price: 3.5, min: 1, max: 1000000, available: 1000000 }, { price: 3.75, min: 1, max: 1000000, available: 1000000 }],
-    venta: [{ price: 3.7, min: 1, max: 1000000, available: 1000000 }, { price: 3.4, min: 1, max: 1000000, available: 1000000 }]
+    compra: [
+      { price: 3.5, min: 1, max: 1000000, available: 1000000, platform: 'binance' },
+      { price: 3.75, min: 1, max: 1000000, available: 1000000, platform: 'binance' },
+      { price: 3.8, min: 200, max: 1000000, available: 1000000, platform: 'binance' }
+    ],
+    venta: [{ price: 3.7, min: 1, max: 1000000, available: 1000000, platform: 'binance' }, { price: 3.4, min: 1, max: 1000000, available: 1000000, platform: 'binance' }]
   };
   ratesAds.pairs.VES.ads = {
-    compra: [{ price: 1000, min: 1, max: 1000000, available: 1000000 }, { price: 1005, min: 1, max: 1000000, available: 1000000 }],
-    venta: [{ price: 1100, min: 1, max: 1000000, available: 1000000 }, { price: 1080, min: 1, max: 1000000, available: 1000000 }]
+    compra: [{ price: 1000, min: 1, max: 1000000, available: 1000000, platform: 'binance' }, { price: 1005, min: 1, max: 1000000, available: 1000000, platform: 'binance' }],
+    venta: [
+      { price: 1100, min: 1, max: 1000000, available: 1000000, platform: 'binance' },
+      { price: 1080, min: 1, max: 1000000, available: 1000000, platform: 'binance' },
+      { price: 1070, min: 1, max: 5000, available: 1000000, platform: 'binance' }
+    ]
   };
   CT.S.rates = ratesAds;
   CT.S.fx = engine.buildFx(ratesAds);
   CT.renderTab('casos');
   const escBestAds = sandbox.document.getElementById('casos-escenario').innerHTML;
-  check('3e: con ads el default Mejor cotiza compra 3,50 / venta 1.100,00 → monto 29.228,57 (sin 2%)',
-    escBestAds.indexOf('29.228,57') >= 0 && /3,50/.test(escBestAds) && /1\.100,00/.test(escBestAds) &&
+  check('3g: con ads el default Mejor cotiza conservador compra 3,75 / venta 1.080,00 → monto 26.784,00 (sin 2%)',
+    escBestAds.indexOf('26.784,00') >= 0 && /3,75/.test(escBestAds) && /1\.080,00/.test(escBestAds) &&
+    escBestAds.indexOf('3,80') < 0 && escBestAds.indexOf('1.070,00') < 0 &&
     escBestAds.indexOf('2%') < 0, escBestAds.slice(0, 500));
   check('3b: con ads no hay aviso de “Sin libro de anuncios”', !/Sin libro de anuncios/.test(escBestAds));
-  /* Máximo 3e: 2 anuncios sin campo platform → un solo grupo (<3 anuncios)
-   * → usa el ÚLTIMO anuncio (3,75) y avisa. */
-  check('3e: setEscenarioModo(origin, max) recalcula: compra 3,75 (último anuncio, <3 por plataforma) → monto 27.280,00',
+  /* Máximo 3g: el mayor price de TODOS los anuncios del lado (3,80), sin
+   * agrupado por plataforma y SIN avisos (la lógica del tercer anuncio ya no
+   * existe). BEST queda cerca de MAX: max 3,80 solo 0,05 por encima del best 3,75. */
+  check('3g: setEscenarioModo(origin, max) recalcula: compra 3,80 (mayor price de todos, el best 3,75 queda cerca) → monto 26.431,58, sin aviso',
     CT.setEscenarioModo('origin', 'max') === true &&
-    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('27.280,00') >= 0 &&
-    /3,75/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
-    /con 2 anuncios \(&lt;3\)/.test(sandbox.document.getElementById('casos-escenario').innerHTML),
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('26.431,58') >= 0 &&
+    /3,80/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('1.080,00') >= 0 &&
+    !/anuncios/.test(sandbox.document.getElementById('casos-escenario').innerHTML),
     sandbox.document.getElementById('casos-escenario').innerHTML.slice(0, 600));
   check('3e: modo activo refleja la selección (origin = max)',
     /mode-active" data-sc-side="origin" data-sc-mode="max"/.test(sandbox.document.getElementById('casos-esc-origin').innerHTML));
   const escMaxAds = sandbox.document.getElementById('casos-escenario').innerHTML;
-  check('3e: setEscenarioModo(origin, best) recalcula sin recargar: compra 3,50 y monto 29.228,57 (dest intacto)',
+  check('3g: setEscenarioModo(origin, best) recalcula sin recargar: compra 3,75 y monto 26.784,00 (dest intacto)',
     CT.setEscenarioModo('origin', 'best') === true &&
-    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('29.228,57') >= 0 &&
-    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('3,50') >= 0 &&
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('26.784,00') >= 0 &&
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('3,75') >= 0 &&
     sandbox.document.getElementById('casos-escenario').innerHTML !== escMaxAds,
     sandbox.document.getElementById('casos-escenario').innerHTML.slice(0, 400));
   check('3e: modo activo refleja la selección (origin = best)',
     /mode-active" data-sc-side="origin" data-sc-mode="best"/.test(sandbox.document.getElementById('casos-esc-origin').innerHTML));
-  /* Mínimo destino 3e: menor anuncio ejecutable de la lista venta (1.080). */
-  check('3e: setEscenarioModo(dest, min): venta 1.080,00 → monto final 28.697,14 (origen intacto en best)',
+  /* Mínimo destino 3g: el MENOR price de TODOS los anuncios del lado venta (1.070,
+   * sin filtro). BEST venta conservador queda cerca de MIN: 1.080, solo 10 por encima. */
+  check('3g: setEscenarioModo(dest, min): venta 1.070,00 → monto final 26.536,00 (origen intacto en best)',
     CT.setEscenarioModo('dest', 'min') === true &&
-    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('28.697,14') >= 0 &&
-    /1\.080,00/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
-    /3,50/.test(sandbox.document.getElementById('casos-escenario').innerHTML),
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('26.536,00') >= 0 &&
+    /1\.070,00/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    /3,75/.test(sandbox.document.getElementById('casos-escenario').innerHTML),
     sandbox.document.getElementById('casos-escenario').innerHTML.slice(0, 400));
   /* P0: el 2% ya no existe: el desglose repinta tras cada cambio de modo y el
-   * registro del caso usa ese mismo quote (dest best → 29.228,57). */
-  check('3e: setEscenarioModo(dest, best): vuelve a venta 1.100,00 → monto final 29.228,57',
+   * registro del caso usa ese mismo quote (dest best → 26.784,00). */
+  check('3g: setEscenarioModo(dest, best): vuelve a venta conservadora 1.080,00 → monto final 26.784,00',
     CT.setEscenarioModo('dest', 'best') === true &&
-    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('29.228,57') >= 0 &&
-    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('1.100,00') >= 0 &&
-    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('292,29') >= 0,
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('26.784,00') >= 0 &&
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('1.080,00') >= 0 &&
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('267,84') >= 0,
     sandbox.document.getElementById('casos-escenario').innerHTML.slice(0, 400));
   const resAdsBest = sandbox.document.getElementById('casos-resultado').innerHTML;
-  check('P0: setEscenarioModo(dest, best) repinta el desglose: 29.228,57 y ya no 28.644,00 (ni cifra del 2%)',
-    resAdsBest.indexOf('29.228,57') >= 0 && resAdsBest.indexOf('28.644,00') < 0,
+  check('P0: setEscenarioModo(dest, best) repinta el desglose: 26.784,00 y ya no 28.644,00 (ni cifra del 2%)',
+    resAdsBest.indexOf('26.784,00') >= 0 && resAdsBest.indexOf('28.644,00') < 0,
     resAdsBest.slice(0, 400));
   const stAds = CT.S.ledger;
   const ledBackup = JSON.parse(JSON.stringify(stAds));
@@ -398,26 +415,26 @@ try {
   sandbox.document.getElementById('casos-obs').value = 'prueba ads best';
   CT.registrarCaso();
   const mvAds = stAds.movements[stAds.movements.length - 1];
-  check('P0: registrarCaso usa el mismo quote que el desglose repintado (out = delivered 29.228,57)',
+  check('P0: registrarCaso usa el mismo quote que el desglose repintado (out = delivered 26.784,00)',
     mvAds != null && mvAds.in.amount === 100 && mvAds.in.currency === 'PEN' &&
     mvAds.out.currency === 'VES' && mvAds.out.amount === CT.quoteEscenario().delivered &&
-    Math.round(mvAds.out.amount * 100) / 100 === 29228.57,
+    Math.round(mvAds.out.amount * 100) / 100 === 26784,
     JSON.stringify(mvAds && mvAds.out));
   // Restaurar el ledger que validan los bloques siguientes (balance, histórico…).
   Object.keys(ledBackup).forEach(function (k) { stAds[k] = ledBackup[k]; });
   // Bug 3d: el Promedio usa la MEDIA DE LOS ANUNCIOS (no la media FX) y, como no
   // es un anuncio único (adUsed null), NO dispara el aviso “no cubre el monto”.
-  check('3b/3d: setEscenarioModo(origin, average): tasa compra = media de anuncios (3,625), no la media FX (3,5)',
+  check('3b/3d: setEscenarioModo(origin, average): tasa compra = media de TODOS los anuncios (3,6833), no la media FX (3,5)',
     CT.setEscenarioModo('origin', 'average') === true &&
-    /3,625/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    /3,6833/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
     !/3,5000/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
     /Promedio de anuncios/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
     !/media FX/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
     !/no cubre el monto/.test(sandbox.document.getElementById('casos-escenario').innerHTML),
     sandbox.document.getElementById('casos-escenario').innerHTML.slice(0, 600));
-  check('3b/3d: setEscenarioModo(dest, average): tasa venta = media de anuncios (1.090,00) y SIN aviso de libro',
+  check('3b/3d: setEscenarioModo(dest, average): tasa venta = media de TODOS los anuncios (1.083,33) y SIN aviso de libro',
     CT.setEscenarioModo('dest', 'average') === true &&
-    /1\.090,00/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    /1\.083,33/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
     (sandbox.document.getElementById('casos-escenario').innerHTML.match(/Promedio de anuncios/g) || []).length === 2 &&
     !/no cubre el monto/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
     !/Sin libro de anuncios/.test(sandbox.document.getElementById('casos-escenario').innerHTML),
@@ -471,8 +488,8 @@ try {
   CT.setEscenarioModo('origin', 'best');
   check('3b: comisión por defecto 8 con depósito COP',
     sandbox.document.getElementById('casos-esc-comision').value === '8');
-  // 3e: Máximo = tercer anuncio de la lista por defecto de cada plataforma y el
-  // mayor de los dos (binance[2] 4.020, bybit[2] 4.030 → 4.030).
+  // 3g: Máximo = el mayor price de TODOS los anuncios del lado (compra COP:
+  // 4.030, mayor de todos).
   const adNv = (price, platform) => ({ price: price, min: 0, max: 100000000, available: 100000000, platform: platform });
   const ratesAdsNoVes = JSON.parse(JSON.stringify(ratesSinAds));
   ratesAdsNoVes.pairs.COP.ads = {
@@ -487,9 +504,9 @@ try {
   CT.S.fx = engine.buildFx(ratesAdsNoVes);
   CT.renderTab('casos');
   const escBestNV = sandbox.document.getElementById('casos-escenario').innerHTML;
-  check('3c: Mejor (default) compra COP = 4.000,00 (menor price ejecutable a 40 US$ eq del libro asc)',
-    /4\.000,00/.test(escBestNV) && escBestNV.indexOf('4.040,00') < 0 && escBestNV.indexOf('4.030,00') < 0, escBestNV.slice(0, 400));
-  check('3e/3c: setEscenarioModo(origin, max): compra COP = 4.030,00 — TERCER anuncio de cada plataforma (binance 4.020, bybit 4.030), mayor de los dos — y sin 2%',
+  check('3c: Mejor conservador (default) compra COP = 4.030,00 (MAYOR price ejecutable a 40 US$ eq del libro) y venta PEN = 3,40 (MENOR)',
+    /4\.030,00/.test(escBestNV) && /3,40/.test(escBestNV) && escBestNV.indexOf('4.040,00') < 0, escBestNV.slice(0, 400));
+  check('3g/3c: setEscenarioModo(origin, max): compra COP = 4.030,00 — el MAYOR price de todos (sin agrupar por plataforma) — y sin 2%',
     CT.setEscenarioModo('origin', 'max') === true &&
     /4\.030,00 COP \/ US\$/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
     sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('4.020,00') < 0 &&
@@ -719,8 +736,9 @@ try {
 
   /* ---- 3e: Mejor se evalúa a 40 US$ equivalentes (independiente del monto) ---- */
   const ratesBest40 = JSON.parse(JSON.stringify(ratesSinAds));
-  // El mejor precio del libro (3,30) NO es ejecutable a 40 US$ eq (disponible 30 < 40):
-  // Mejor debe elegir 3,40 (el mejor precio disponible a 40) para cualquier monto del caso.
+  // Criterio conservador (3g): BEST compra = MAYOR precio EJECUTABLE a 40 US$ eq
+  // (disponible ≥ 40): elige 3,50; 3,40 sigue ejecutable; 3,30 no (disp 30 < 40).
+  // Independiente del monto del caso: 100 o 500 PEN dan la misma tasa a 40 US$ eq.
   ratesBest40.pairs.PEN.ads = {
     compra: [
       { price: 3.30, min: 0, max: 100000000, available: 30, platform: 'binance' },
@@ -732,14 +750,14 @@ try {
   CT.S.fx = engine.buildFx(ratesBest40);
   CT.renderTab('casos');
   const esc40 = sandbox.document.getElementById('casos-escenario').innerHTML;
-  check('3e: BEST con monto 100 PEN = mejor precio ejecutable a 40 US$ eq (compra 3,40; descarta 3,30 con disp 30 < 40) → 30.088,24',
-    /3,40 PEN \/ US\$/.test(esc40) && esc40.indexOf('3,30') < 0 &&
-    esc40.indexOf('30.088,24') >= 0, esc40.slice(0, 600));
+  check('3g: BEST conservador con monto 100 PEN = MAYOR precio ejecutable a 40 US$ eq (compra 3,50; MAX sin filtro = 3,50 aquí) → 29.228,57',
+    /3,50 PEN \/ US\$/.test(esc40) && esc40.indexOf('3,30') < 0 &&
+    esc40.indexOf('29.228,57') >= 0, esc40.slice(0, 600));
   sandbox.document.getElementById('casos-monto').value = '500';
   CT.renderResultado(); CT.renderEscenario();
   const esc40b = sandbox.document.getElementById('casos-escenario').innerHTML;
-  check('3e: BEST es independiente del monto del caso (500 PEN → sigue compra 3,40 a 40 US$ eq)',
-    /3,40 PEN \/ US\$/.test(esc40b) && esc40b.indexOf('3,30') < 0, esc40b.slice(0, 600));
+  check('3g: BEST es independiente del monto del caso (500 PEN → sigue compra 3,50 a 40 US$ eq)',
+    /3,50 PEN \/ US\$/.test(esc40b) && esc40b.indexOf('3,30') < 0, esc40b.slice(0, 600));
   sandbox.document.getElementById('casos-monto').value = '100';
   CT.S.rates = ratesSinAds;
   CT.S.fx = fxSinAds;

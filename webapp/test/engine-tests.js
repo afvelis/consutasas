@@ -429,14 +429,22 @@ var adsVentaInline = [
   { price: 3.84, min: 8, max: 8000, available: 800, platform: 'bybit' }
 ];
 
-// best (3e): mejor precio evaluado a 40 USD equivalentes (min en compra / max en venta)
+// best (criterio conservador): precio ejecutable a 40 USD equivalentes —
+// compra = MAYOR price ejecutable (pagar más, conservador); venta = MENOR (recibir menos)
 var arB = engine.adRateAt(FX, 'PEN', 'compra', 10, 'best', adsCompraInline);
-check('adRateAt best compra: rate = 3.50 (min price)', arB.rate === 3.50);
+check('adRateAt best compra: rate = 3.75 (MAYOR price ejecutable, criterio conservador; = MAX aquí)', arB.rate === 3.75);
 check('adRateAt best compra: source ad_best_compra', arB.source === 'ad_best_compra');
-check('adRateAt best compra: ad price 3.50', arB.ad && arB.ad.price === 3.50);
+check('adRateAt best compra: ad price 3.75', arB.ad && arB.ad.price === 3.75);
 var arV = engine.adRateAt(FX, 'PEN', 'venta', 10, 'best', adsVentaInline);
-check('adRateAt best venta: rate = 3.90 (max price)', arV.rate === 3.90);
+check('adRateAt best venta: rate = 3.70 (MENOR price ejecutable, criterio conservador; = MIN aquí)', arV.rate === 3.70);
 check('adRateAt best venta: source ad_best_venta', arV.source === 'ad_best_venta');
+// BEST ≠ extremo cuando el ad extremo no es ejecutable a 40 US$ eq:
+// compra con top 3.80 de min 200 (40×3.80 = 152 < 200) → best = 3.75, sin filtro MAX = 3.80.
+var arBNear = engine.adRateAt(FX, 'PEN', 'compra', 10, 'best', adsCompraInline.concat([
+  { price: 3.80, min: 200, max: 999999, available: 999999, platform: 'bybit' }
+]));
+check('adRateAt best compra cerca de MAX (no igual): top no ejecutable → best 3.75 < MAX sin filtro 3.80',
+  arBNear.rate === 3.75 && engine.adRateAt(FX, 'PEN', 'compra', 10, 'max', adsCompraInline.concat([{ price: 3.80, min: 200, max: 999999, available: 999999, platform: 'bybit' }])).rate === 3.80);
 
 // 3e: BEST usa un monto de referencia FIJO de 40 USD equivalentes (min/price…max/price):
 // un ad con min 100 es ejecutable a 40 USD (40×3.60 = 144 ≥ 100) aunque a 10 no lo sería.
@@ -448,15 +456,15 @@ check('adRateAt best: monto fijo 40 USD eq → min 100 es ejecutable (rate 3.60)
 check('adRateAt best: min 200 fuera incluso a 40 USD (40×3.60 = 144 < 200)',
   engine.adRateAt(FX, 'PEN', 'compra', 10, 'best', [{ price: 3.60, min: 200, max: 500000, available: 5000 }]) === null);
 
-// average: media aritmética de los anuncios ejecutables con el MONTO REAL (bug 3d: ya NO media FX)
+// average (3g): media aritmética de TODOS los anuncios del lado (ya NO media FX)
 var arA = engine.adRateAt(FX, 'PEN', 'compra', 10, 'average', adsCompraInline);
-check('adRateAt average: rate = media de prices (3.9283… con 6 anuncios ejecutables a 10 USD)',
+check('adRateAt average: rate = media de los prices de TODOS los anuncios (3.595 con 6 anuncios)',
   typeof arA.rate === 'number' && Math.abs(arA.rate - (3.50 + 3.60 + 3.75 + 3.52 + 3.55 + 3.65) / 6) < 1e-9);
 check('adRateAt average: source ad_average_compra', arA.source === 'ad_average_compra');
 check('adRateAt average: ad null (no es un anuncio único) y adsCount 6', arA.ad === null && arA.adsCount === 6);
 check('adRateAt average: NO es la media FX 3.5', arA.rate !== 3.5);
 
-// min: el menor price ejecutable (monto real)
+// min (3g): el menor price de TODOS los anuncios del lado (los 4 son ejecutables aquí)
 var arMin = engine.adRateAt(FX, 'PEN', 'compra', 10, 'min', adsCompraInline);
 check('adRateAt min compra: rate = 3.50 (menor price)', arMin.rate === 3.50);
 check('adRateAt min compra: source ad_min_compra', arMin.source === 'ad_min_compra');
@@ -464,45 +472,63 @@ var arMinV = engine.adRateAt(FX, 'PEN', 'venta', 10, 'min', adsVentaInline);
 check('adRateAt min venta: rate = 3.70 (menor price de la lista desc)', arMinV.rate === 3.70);
 check('adRateAt min venta: source ad_min_venta y ad price 3.70', arMinV.source === 'ad_min_venta' && arMinV.ad && arMinV.ad.price === 3.70);
 
-// max (3e): tercer anuncio de la lista por defecto de cada plataforma; mayor de los dos terceros
+// max (3g): el MAYOR price de TODOS los anuncios del lado, sin filtro
 var arMaxC = engine.adRateAt(FX, 'PEN', 'compra', 10, 'max', adsCompraInline);
-check('adRateAt max compra: tercer Binance = 3.75 vs tercer Bybit = 3.65 → 3.75 (mayor)', arMaxC.rate === 3.75);
+check('adRateAt max compra: mayor price de todos = 3.75', arMaxC.rate === 3.75);
 check('adRateAt max compra: source ad_max_compra y ad.price 3.75', arMaxC.source === 'ad_max_compra' && arMaxC.ad && arMaxC.ad.price === 3.75 && arMaxC.mode === 'max');
 var arMaxV = engine.adRateAt(FX, 'PEN', 'venta', 10, 'max', adsVentaInline);
-check('adRateAt max venta: tercer Binance = 3.70 vs tercer Bybit = 3.84 → 3.84 (mayor)', arMaxV.rate === 3.84);
+check('adRateAt max venta: mayor price de todos = 3.90 (antes 3e: tercer anuncio 3.84)', arMaxV.rate === 3.90);
 check('adRateAt max venta: source ad_max_venta', arMaxV.source === 'ad_max_venta');
-check('adRateAt max: sin avisos cuando cada plataforma tiene ≥3 anuncios',
-  (!arMaxC.warnings || arMaxC.warnings.length === 0) && (!arMaxV.warnings || arMaxV.warnings.length === 0));
-// plataforma con <3 anuncios: usa su último y avisa
+check('adRateAt max: sin avisos de plataforma (3g: la lógica del tercer anuncio existe YA NO)',
+  arMaxC.warnings === undefined && arMaxV.warnings === undefined);
 var arMax2 = engine.adRateAt(FX, 'PEN', 'compra', 10, 'max', [
-  { price: 3.90, min: 5, max: 5000, available: 500, platform: 'binance' },
   { price: 3.55, min: 5, max: 5000, available: 500, platform: 'binance' },
+  { price: 3.90, min: 5, max: 100000, available: 500, platform: 'binance' },
   { price: 3.52, min: 8, max: 8000, available: 800, platform: 'bybit' },
-  { price: 3.55, min: 8, max: 8000, available: 800, platform: 'bybit' },
-  { price: 3.65, min: 8, max: 8000, available: 800, platform: 'bybit' }
+  { price: 3.55, min: 8, max: 8000, available: 800, platform: 'bybit' }
 ]);
-check('adRateAt max compra: Binance con 2 anuncios → usa su último (3.55) y Bybit 3.65 → 3.65',
-  arMax2.rate === 3.65 && arMax2.ad && arMax2.ad.price === 3.65);
-check('adRateAt max compra: aviso por plataforma con <3 anuncios',
-  Array.isArray(arMax2.warnings) && arMax2.warnings.length === 1 && /binance/.test(arMax2.warnings[0]) && /ltimo/.test(arMax2.warnings[0]));
+check('adRateAt max compra: SIN agrupado por plataforma — el mayor de todos (3.90) aunque su ad sea poco disponible',
+  arMax2.rate === 3.90 && arMax2.ad && arMax2.ad.price === 3.90);
+check('adRateAt max compra: sin warnings aunque ninguna plataforma tenga 3 anuncios',
+  arMax2.warnings === undefined, JSON.stringify(arMax2));
 
-// P1-1: filtro de ads por min/max/available con el monto real (average/min)
-check('adRateAt min: excluye ad si cost < min (los no ejecutables → null)', engine.adRateAt(FX, 'PEN', 'compra', 10, 'min', [{ price: 3.60, min: 50, max: 500, available: 100 }]) == null);
-check('adRateAt average: sin ejecutables pero con libro → fallback media FX (comportamiento bug 3d)',
-  Math.abs(engine.adRateAt(FX, 'PEN', 'compra', 10, 'average', [{ price: 3.60, min: 50, max: 500, available: 100 }]).rate - 3.5) < 1e-9);
-check('adRateAt min: excluye ad si cost > max', engine.adRateAt(FX, 'PEN', 'compra', 10, 'min', [{ price: 3.60, min: 1, max: 30, available: 100 }]) == null);
-check('adRateAt min: excluye ad si available < amount', engine.adRateAt(FX, 'PEN', 'compra', 100, 'min', [{ price: 3.60, min: 1, max: 500, available: 10 }]) == null);
-check('adRateAt min: ad con cost=36 dentro [10,50] y available=200 es ejecutable',
-  engine.adRateAt(FX, 'PEN', 'compra', 10, 'min', [{ price: 3.60, min: 10, max: 50, available: 200 }]) != null);
+// 3g — INVARIANTE fundamental: MAX ≥ AVG ≥ MIN en ambos lados, y BEST queda
+// entre Mínimo y Máximo (BEST compra = menor ejecutable a 40 US$ eq; BEST
+// venta = mayor ejecutable).
+var minC = engine.adRateAt(FX, 'PEN', 'compra', 10, 'min', adsCompraInline).rate;
+var avgC = engine.adRateAt(FX, 'PEN', 'compra', 10, 'average', adsCompraInline).rate;
+var maxC = engine.adRateAt(FX, 'PEN', 'compra', 10, 'max', adsCompraInline).rate;
+var bestC = engine.adRateAt(FX, 'PEN', 'compra', 10, 'best', adsCompraInline).rate;
+var minV = engine.adRateAt(FX, 'PEN', 'venta', 10, 'min', adsVentaInline).rate;
+var avgV = engine.adRateAt(FX, 'PEN', 'venta', 10, 'average', adsVentaInline).rate;
+var maxV = engine.adRateAt(FX, 'PEN', 'venta', 10, 'max', adsVentaInline).rate;
+var bestV = engine.adRateAt(FX, 'PEN', 'venta', 10, 'best', adsVentaInline).rate;
+check('3g compra: MAX ≥ AVG ≥ MIN (3.75 ≥ 3.595 ≥ 3.50)', maxC >= avgC && avgC >= minC && maxC === 3.75 && Math.abs(avgC - 3.595) < 1e-9 && minC === 3.50);
+check('3g venta: MAX ≥ AVG ≥ MIN (3.90 ≥ 3.83 ≥ 3.70)', maxV >= avgV && avgV >= minV && maxV === 3.90 && Math.abs(avgV - 3.83) < 1e-9 && minV === 3.70);
+check('3g: BEST entre MIN y MAX en compra (3.50 ≤ 3.75 ≤ 3.75) y en venta (3.70 ≤ 3.70 ≤ 3.90; BEST = MIN venta aquí)',
+  minC <= bestC && bestC <= maxC && bestC === 3.75 && minV <= bestV && bestV <= maxV && bestV === 3.70);
 
-// Fallback a media FX cuando NO hay anuncios ejecutables (ads vacías o filtradas)
+// 3g: min/max/average SIN filtro de ejecutabilidad (antes filtraban por
+// min/max/available con el monto real; ahora toman todos los anuncios del lado).
+check('adRateAt min: SIN filtro — incluye el ad aunque cost < min (antes: null)',
+  engine.adRateAt(FX, 'PEN', 'compra', 10, 'min', [{ price: 3.60, min: 50, max: 500, available: 100 }]).rate === 3.60);
+check('adRateAt min: SIN filtro — incluye el ad aunque cost > max',
+  engine.adRateAt(FX, 'PEN', 'compra', 10, 'min', [{ price: 3.60, min: 1, max: 30, available: 100 }]).rate === 3.60);
+check('adRateAt min: SIN filtro — incluye el ad aunque available < amount',
+  engine.adRateAt(FX, 'PEN', 'compra', 100, 'min', [{ price: 3.60, min: 1, max: 500, available: 10 }]).rate === 3.60);
+check('adRateAt average: media de TODOS los anuncios aunque ninguno sea ejecutable (3.60, antes: fallback media FX 3.5)',
+  Math.abs(engine.adRateAt(FX, 'PEN', 'compra', 10, 'average', [{ price: 3.60, min: 50, max: 500, available: 100 }]).rate - 3.6) < 1e-9);
+check('adRateAt average: admite montos de ad fuera de rango (no filtra disponible)',
+  engine.adRateAt(FX, 'PEN', 'compra', 100, 'average', [{ price: 3.60, min: 1, max: 500, available: 10 }]).rate === 3.60);
+
+// ads variadas: la media incluye TODOS los ads del lado (el no ejecutable con
+// min 60, cost 33 < 60, no filtra: antes caía a media FX).
 var adsThick = [{ price: 3.30, min: 25, max: 5000, available: 100 }];
 var arF = engine.adRateAt(FX, 'PEN', 'compra', 10, 'average', adsThick);
-check('adRateAt average: media de anuncios EJECUTABLES (3.30), no media FX', arF != null && arF.rate === 3.30 && arF.source === 'ad_average_compra' && arF.adsCount === 1);
-// ads presentes pero ninguno ejecutable (cost 30 < min 50) → fallback media FX
-var arFb = engine.adRateAt(FX, 'PEN', 'compra', 10, 'average', [{ price: 3.30, min: 50, max: 5000, available: 100 }]);
-check('adRateAt average: sin ejecutables → fallback media FX (3.5, media(PEN/compra), adsCount 0)',
-  arFb != null && arFb.rate === 3.5 && arFb.source === 'media(PEN/compra)' && arFb.adsCount === 0 && arFb.ad === null);
+check('adRateAt average: media de TODOS los anuncios del lado (3.30), no media FX', arF != null && arF.rate === 3.30 && arF.source === 'ad_average_compra' && arF.adsCount === 1);
+var arFb = engine.adRateAt(FX, 'PEN', 'compra', 10, 'average', [{ price: 3.30, min: 60, max: 5000, available: 100 }]);
+check('adRateAt average: incluye el ad NO ejecutable (3.30 con min 60; antes: fallback media FX 3.5, media(PEN/compra))',
+  arFb != null && arFb.rate === 3.30 && arFb.source === 'ad_average_compra' && arFb.adsCount === 1);
 // ads vacías → fallback a media FX (en los cuatro modos)
 check('adRateAt average ads vacías: fallback media FX compra (1000)', engine.adRateAt(FX, 'VES', 'compra', 10, 'average', []).rate === 1000);
 check('adRateAt best ads vacías: fallback media FX compra', engine.adRateAt(FX, 'VES', 'compra', 10, 'best', []).rate === 1000);
@@ -533,9 +559,9 @@ var scAds = engine.rateScenarios(S, fxAds, ['VES', 'PEN'], 'BA', 10, 'compra', {
   VES: { compra: [], venta: [] }                            // sin ads → media FX
 });
 // Para BA: origin = PEN (compra), dest = VES (venta)
-check('rateScenarios con ads: best originRate (PEN compra min) = 3.50', scAds.best.originRate === 3.50);
-check('rateScenarios con ads: best destRate (VES venta media) = 1100', scAds.best.destRate === 1100);
-check('rateScenarios con ads: max originRate (mayor de los terceros por plataforma) = 3.75',
+check('rateScenarios con ads: best originRate (PEN compra, MAYOR ejecutable) = 3.75', scAds.best.originRate === 3.75);
+check('rateScenarios con ads: best destRate (VES sin ads) = media 1100', scAds.best.destRate === 1100);
+check('rateScenarios con ads: max originRate (mayor price de todos) = 3.75',
   scAds.max.originRate === 3.75);
 check('rateScenarios con ads: max destRate (VES sin ads) = media 1100', scAds.max.destRate === 1100);
 // average usa la media de los anuncios y propaga source/adsCount (adUsed null)
@@ -546,26 +572,35 @@ check('rateScenarios con ads: average propaga originSource/destSource, adsCount 
   scAds.average.originSource === 'ad_average_compra' && scAds.average.destSource === 'media(VES/venta)' &&
   scAds.average.originAdsCount === 6 && scAds.average.destAdsCount === 0 &&
   scAds.average.originAd == null && scAds.average.destAd == null);
-check('rateScenarios con ads: min originRate = 3.50 y min ≤ best ≤ … ≤ max en compra',
+check('rateScenarios con ads: MIN ≤ BEST ≤ MAX en compra (3.50 ≤ 3.75 ≤ 3.75) y en venta',
   scAds.min.originRate === 3.50 && scAds.min.originRate <= scAds.best.originRate && scAds.best.originRate <= scAds.max.originRate);
+check('rateScenarios con ads: MAX ≥ AVG ≥ MIN en venta (dest side, invariante 3g)',
+  scAds.max.destRate >= scAds.average.destRate && scAds.average.destRate >= scAds.min.destRate);
+check('rateScenarios 3g: sin warnings/originWarn/destWarn en ningún escenario',
+  scAds.max.warnings === undefined && scAds.max.originWarn === undefined && scAds.max.destWarn === undefined,
+  JSON.stringify(scAds.max));
 
-console.log('\n[14c] Máximo por plataforma (3e): tercer anuncio, mayor de los dos terceros');
+console.log('\n[14c] Máximo/mínimo/promedio sobre TODOS los anuncios (3g) — sin lógica de tercer anuncio');
 var scAdsMax2 = engine.rateScenarios(S, fxAds, ['VES', 'PEN'], 'BA', 10, 'compra', {
   PEN: {
     compra: [
       { price: 3.90, min: 5, max: 5000, available: 500, platform: 'binance' },
       { price: 3.55, min: 5, max: 5000, available: 500, platform: 'binance' },
       { price: 3.52, min: 8, max: 8000, available: 800, platform: 'bybit' },
-      { price: 3.55, min: 8, max: 8000, available: 800, platform: 'bybit' },
-      { price: 3.65, min: 8, max: 8000, available: 800, platform: 'bybit' }
+      { price: 3.55, min: 8, max: 8000, available: 800, platform: 'bybit' }
     ], venta: []
   }, VES: { compra: [], venta: [] }
 });
-check('rateScenarios max: Binance con <3 → su último (3.55); Bybit tercero 3.65 → max 3.65 con aviso',
-  scAdsMax2.max.originRate === 3.65 && Array.isArray(scAdsMax2.max.warnings) && scAdsMax2.max.warnings.length === 1 &&
-  /binance/.test(scAdsMax2.max.warnings[0]), JSON.stringify(scAdsMax2.max));
-check('rateScenarios max: best/average/min no traen warnings de plataforma',
-  scAdsMax2.best.warnings === undefined && scAdsMax2.min.warnings === undefined);
+check('rateScenarios max: SIN agrupado por plataforma — el mayor de todos (3.90), sin avisos',
+  scAdsMax2.max.originRate === 3.90 && scAdsMax2.max.warnings === undefined &&
+  scAdsMax2.max.originWarn === undefined, JSON.stringify(scAdsMax2.max));
+var minAll = engine.adRateAt(fxAds, 'PEN', 'compra', 10, 'min', [
+  { price: 3.90, min: 5, max: 5000, available: 500, platform: 'binance' },
+  { price: 3.55, min: 350000, max: 500000, available: 500, platform: 'binance' }, // NO ejecutable: cost 355000 > max
+  { price: 3.40, min: 8, max: 8000, available: 800, platform: 'bybit' }
+]);
+check('rateScenarios sources 3g: min incluye TODOS los ads (3.40 aunque el de 3.55 no sea ejecutable)',
+  minAll != null && minAll.rate === 3.40 && minAll.source === 'ad_min_compra');
 
 console.log('\n[14d] caseQuoteScenario PEN→COP (3e): matriz max/best/average/min sin 2%');
 var fxCopAds = engine.buildFx({
@@ -574,8 +609,8 @@ var fxCopAds = engine.buildFx({
   eurRef: { fixture: true, source: 'frankfurter', usdToEur: 0.9 }
 });
 fxCopAds.pairs = {
-  PEN: { ads: adsCompraInline }, // compra asc: best/min 3.50 … max 3.75
-  COP: { ads: [                  // venta desc: best 4250 … min 4190; terceros 4240/4190
+  PEN: { ads: adsCompraInline }, // compra: best = MAYOR ejecutable (3.75) … min 3.50
+  COP: { ads: [                  // venta: best = MENOR ejecutable 4190 … max 4250
     { price: 4250, min: 5, max: 999999, available: 999999, platform: 'bybit' },
     { price: 4245, min: 5, max: 999999, available: 999999, platform: 'bybit' },
     { price: 4240, min: 5, max: 999999, available: 999999, platform: 'bybit' },
@@ -590,32 +625,36 @@ var qMaxCop = engine.caseQuoteScenario(S, fxCopAds, {
   commissionPct: 0.05, terceroOn: false
 });
 check('caseQuoteScenario Máximo PEN→COP: ok', qMaxCop.ok === true);
-check('caseQuoteScenario PEN→COP máx compra: originRate = 3.75 (tercer Binance, mayor de los terceros)',
+check('caseQuoteScenario PEN→COP máx compra: originRate = 3.75 (mayor price de todos)',
   Math.abs(qMaxCop.rateInfo.originRate - 3.75) < 1e-9);
-check('caseQuoteScenario PEN→COP máx venta: destRate = 4240 (tercer Bybit, mayor de los terceros)',
-  Math.abs(qMaxCop.rateInfo.destRate - 4240) < 1e-9);
+check('caseQuoteScenario PEN→COP máx venta: destRate = 4250 (mayor price de todos, antes tercer anuncio 4240)',
+  Math.abs(qMaxCop.rateInfo.destRate - 4250) < 1e-9);
 check('caseQuoteScenario PEN→COP Máximo: sin 2% y sin safetyPct (3e lo elimina)',
   qMaxCop.rateInfo.safetyPct === undefined && qMaxCop.scenario.vesSafetyPct === undefined);
-check('caseQuoteScenario PEN→COP Máximo: adUsed = ad del tercer Binance (3.75)',
+check('caseQuoteScenario PEN→COP Máximo: adUsed = ad del mayor price (3.75)',
   qMaxCop.rateInfo.adUsed != null && qMaxCop.rateInfo.adUsed.ad.price === 3.75 && qMaxCop.rateInfo.adUsed.mode === 'max');
 check('caseQuoteScenario PEN→COP Máximo: rateInfo coherente (efectiva = delivered/deposit, pactada bruta, mercado, profitSafety)',
   qMaxCop.rateInfo.effectiveRate != null && Math.abs(qMaxCop.rateInfo.effectiveRate - Math.round(qMaxCop.delivered / qMaxCop.deposit * 100) / 100) < 1e-9 &&
-  Math.abs(qMaxCop.rateInfo.quotedRate - Math.round(4240 / 3.75 * 100) / 100) < 1e-9 &&
+  Math.abs(qMaxCop.rateInfo.quotedRate - Math.round(4250 / 3.75 * 100) / 100) < 1e-9 &&
   typeof qMaxCop.rateInfo.marketRate === 'number' && typeof qMaxCop.rateInfo.profitSafety === 'number');
 var destMax = qMaxCop.rateInfo.destScenarios.max;
-check('caseQuoteScenario PEN→COP Máximo: destScenarios.max.destRate = 4240 y destAd.price = 4240',
-  destMax && Math.abs(destMax.destRate - 4240) < 1e-9 && destMax.destAd && destMax.destAd.rate === 4240);
-check('caseQuoteScenario PEN→COP Máximo: delivered = 107.413,33 (5%, máximo/máximo)',
-  qMaxCop.delivered === 107413.33, String(qMaxCop.delivered));
+check('caseQuoteScenario PEN→COP Máximo: destScenarios.max.destRate = 4250 y destAd.price = 4250',
+  destMax && Math.abs(destMax.destRate - 4250) < 1e-9 && destMax.destAd && destMax.destAd.rate === 4250);
+check('caseQuoteScenario PEN→COP Máximo: delivered = 107.666,67 (5%, máximo/máximo con venta 4250)',
+  qMaxCop.delivered === 107666.67, String(qMaxCop.delivered));
 
-// Mejor/Mejor: min compra / max venta a 40 USD eq
+// Best/Best: criterio conservador a 40 USD eq — compra = MAYOR ejecutable (3.75),
+// venta = MENOR ejecutable (4190): BEST queda cerca de MAX (compra) y cerca de MIN (venta).
 var qBestCop = engine.caseQuoteScenario(S, fxCopAds, {
   pair: ['PEN', 'COP'], direction: 'AB', deposit: 100,
   originMode: 'best', destMode: 'best', commissionPct: 0.05, terceroOn: false
 });
-check('caseQuoteScenario Mejor PEN→COP: originRate 3.50 (min compra) y destRate 4250 (max venta)',
-  Math.abs(qBestCop.rateInfo.originRate - 3.5) < 1e-9 && Math.abs(qBestCop.rateInfo.destRate - 4250) < 1e-9);
-check('caseQuoteScenario Mejor PEN→COP: delivered = 115.357,14', qBestCop.delivered === 115357.14, String(qBestCop.delivered));
+check('caseQuoteScenario Mejor PEN→COP: originRate 3.75 (mayor compra ejecutable) y destRate 4190 (menor venta ejecutable)',
+  Math.abs(qBestCop.rateInfo.originRate - 3.75) < 1e-9 && Math.abs(qBestCop.rateInfo.destRate - 4190) < 1e-9);
+check('caseQuoteScenario Mejor PEN→COP: delivered = 106.146,67', qBestCop.delivered === 106146.67, String(qBestCop.delivered));
+check('caseQuoteScenario Mejor PEN→COP: adUsed = ad del mayor compra ejecutable (3.75) y destAd 4190',
+  qBestCop.rateInfo.adUsed != null && qBestCop.rateInfo.adUsed.ad.price === 3.75 &&
+  qBestCop.rateInfo.originScenarios.best.destAd && qBestCop.rateInfo.originScenarios.best.destAd.ad.price === 4190);
 
 // average/average: media de ejecutables (monto real)
 var qAvgCop = engine.caseQuoteScenario(S, fxCopAds, {
@@ -638,12 +677,16 @@ var qMinCop = engine.caseQuoteScenario(S, fxCopAds, {
 check('caseQuoteScenario min PEN→COP: originRate 3.50 y destRate 4190 (menor price venta)',
   Math.abs(qMinCop.rateInfo.originRate - 3.5) < 1e-9 && Math.abs(qMinCop.rateInfo.destRate - 4190) < 1e-9);
 check('caseQuoteScenario min PEN→COP: delivered = 113.728,57', qMinCop.delivered === 113728.57, String(qMinCop.delivered));
-check('caseQuoteScenario matriz: min ≤ average y mejor compra ≤ max compra',
+check('caseQuoteScenario matriz: MIN ≤ AVG ≤ MAX y BEST entre MIN y MAX en ambos lados (criterio conservador)',
   qMinCop.rateInfo.originRate <= qAvgCop.rateInfo.originRate && qAvgCop.rateInfo.originRate <= qMaxCop.rateInfo.originRate &&
-  qMaxCop.rateInfo.destRate <= qBestCop.rateInfo.destRate && qMinCop.rateInfo.destRate <= qAvgCop.rateInfo.destRate);
+  qMinCop.rateInfo.originRate <= qBestCop.rateInfo.originRate && qBestCop.rateInfo.originRate <= qMaxCop.rateInfo.originRate &&
+  qMinCop.rateInfo.destRate <= qAvgCop.rateInfo.destRate && qAvgCop.rateInfo.destRate <= qMaxCop.rateInfo.destRate &&
+  qMinCop.rateInfo.destRate <= qBestCop.rateInfo.destRate && qBestCop.rateInfo.destRate <= qMaxCop.rateInfo.destRate);
+check('caseQuoteScenario: BEST compra cerca de MAX (3.75 = MAX) y BEST venta cerca de MIN (4190 = MIN)',
+  qBestCop.rateInfo.originRate === qMaxCop.rateInfo.originRate && qBestCop.rateInfo.destRate === qMinCop.rateInfo.destRate);
 
-console.log('\n[14e] caseQuoteScenario: warnings <3 solo en scenarios.max (rateInfo.warnings = [] en best)');
-// Binance PEN/compra con 2 anuncios (<3) → max avisa; Bybit con 3 → sin aviso.
+console.log('\n[14e] caseQuoteScenario: sin avisos de plataforma (3g; el Máximo es el mayor price)');
+// Binance PEN/compra con 2 anuncios (<3): y con 3g eso ya NO genera avisos.
 var fxWarnQ = engine.buildFx({
   fixture: true,
   pairs: { PEN: { compra: 3.5, venta: 3.7 }, COP: { compra: 4000, venta: 4200 } },
@@ -671,14 +714,21 @@ var qBestWarn = engine.caseQuoteScenario(S, fxWarnQ, {
   originMode: 'best', destMode: 'best', commissionPct: 0.05, terceroOn: false
 });
 check('caseQuoteScenario best PEN→COP (binance <3): ok', qBestWarn.ok === true, JSON.stringify(qBestWarn.error || qBestWarn.delivered));
-check('caseQuoteScenario best: rateInfo.warnings = [] aunque haya plataforma con <3 anuncios',
+check('caseQuoteScenario best: rateInfo.warnings = [] (3g: sin avisos por modo)',
   Array.isArray(qBestWarn.rateInfo.warnings) && qBestWarn.rateInfo.warnings.length === 0,
   JSON.stringify(qBestWarn.rateInfo.warnings));
-check('caseQuoteScenario best: scenarios.max.warnings conserva 1 aviso (lado compra <3, de binance)',
-  Array.isArray(qBestWarn.rateInfo.originScenarios.max.warnings) &&
-  qBestWarn.rateInfo.originScenarios.max.warnings.length === 1 &&
-  /binance/.test(qBestWarn.rateInfo.originScenarios.max.warnings[0]),
-  JSON.stringify(qBestWarn.rateInfo.originScenarios.max.warnings));
+check('caseQuoteScenario best: scenarios.max SIN warnings (3g retiró la lógica del tercer anuncio)',
+  qBestWarn.rateInfo.originScenarios.max.warnings === undefined,
+  JSON.stringify(qBestWarn.rateInfo.originScenarios.max));
+var qMaxWarn = engine.caseQuoteScenario(S, fxWarnQ, {
+  pair: ['PEN', 'COP'], direction: 'AB', deposit: 100,
+  originMode: 'max', destMode: 'max', commissionPct: 0.05, terceroOn: false
+});
+check('caseQuoteScenario max: rateInfo.warnings = [] aunque ninguna plataforma tenga 3 anuncios',
+  Array.isArray(qMaxWarn.rateInfo.warnings) && qMaxWarn.rateInfo.warnings.length === 0,
+  JSON.stringify(qMaxWarn.rateInfo.warnings));
+check('caseQuoteScenario max PEN→COP (compra): originRate = mayor price de todos = 3.65',
+  Math.abs(qMaxWarn.rateInfo.originRate - 3.65) < 1e-9);
 
 console.log('\n[15] caseQuoteScenario — tasas manuales (3e): factor de seguridad por lado');
 // Manual origen 3.60 vs sistema (Máximo) 3.75 → factor = (3.75 − 3.60)/3.75 × 100 = 4 % (descuento)
@@ -696,22 +746,22 @@ check('caseQuoteScenario manual origen: originSecurityFactor = 4 % ((sistema −
   Math.abs(qMan.rateInfo.originSecurityFactor - 4) < 1e-6);
 check('caseQuoteScenario manual origen: originSource = manual y adUsed null',
   qMan.rateInfo.originSource === 'manual' && qMan.rateInfo.adUsed == null);
-check('caseQuoteScenario manual origen: delivered = 111.888,89 (base manual)',
-  qMan.delivered === 111888.89, String(qMan.delivered));
+check('caseQuoteScenario manual origen: delivered = 112.152,78 (base manual 3.60 con sistema max/max 3.75/4250)',
+  qMan.delivered === 112152.78, String(qMan.delivered));
 check('caseQuoteScenario manual origen: destino sin manual → destManualRate null y factor null',
   qMan.rateInfo.destManualRate == null && qMan.rateInfo.destSecurityFactor == null && qMan.rateInfo.destSource === 'ad_max_venta');
-// Manual destino mayor que el sistema → factor NEGATIVO (recargo), se muestra tal cual
+// Manual destino mayor que el sistema (4250) → factor NEGATIVO (recargo), se muestra tal cual
 var qManNeg = engine.caseQuoteScenario(S, fxCopAds, {
   pair: ['PEN', 'COP'], direction: 'AB', deposit: 100,
-  originMode: 'max', destMode: 'max', destManualRate: 4250,
+  originMode: 'max', destMode: 'max', destManualRate: 4260,
   commissionPct: 0.05, terceroOn: false
 });
-check('caseQuoteScenario manual destino: destRate = 4250 (manual manda aunque recargue)',
-  Math.abs(qManNeg.rateInfo.destRate - 4250) < 1e-9);
-check('caseQuoteScenario manual destino: destSecurityFactor NEGATIVO ≈ −0.2358 % (recargo, dec. supervisada)',
-  Math.abs(qManNeg.rateInfo.destSecurityFactor - ((4240 - 4250) / 4240 * 100)) < 1e-9, String(qManNeg.rateInfo.destSecurityFactor));
-check('caseQuoteScenario manual destino: destSource = manual y delivered = 107.666,67',
-  qManNeg.rateInfo.destSource === 'manual' && qManNeg.delivered === 107666.67, String(qManNeg.delivered));
+check('caseQuoteScenario manual destino: destRate = 4260 (manual manda aunque recargue)',
+  Math.abs(qManNeg.rateInfo.destRate - 4260) < 1e-9);
+check('caseQuoteScenario manual destino: destSecurityFactor NEGATIVO ≈ −0.23529 % (recargo vs sistema 4250)',
+  Math.abs(qManNeg.rateInfo.destSecurityFactor - ((4250 - 4260) / 4250 * 100)) < 1e-9, String(qManNeg.rateInfo.destSecurityFactor));
+check('caseQuoteScenario manual destino: destSource = manual y delivered = 107.920,00',
+  qManNeg.rateInfo.destSource === 'manual' && qManNeg.delivered === 107920, String(qManNeg.delivered));
 // Manual en modo inverso también manda
 var qManRev = engine.caseQuoteScenario(S, fxCopAds, {
   pair: ['PEN', 'COP'], direction: 'AB', originMode: 'max', destMode: 'max',

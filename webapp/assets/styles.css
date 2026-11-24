@@ -428,7 +428,13 @@ details summary { cursor: pointer; color: var(--accent); font-size: 0.88rem; }
 }
 .hint-details summary:hover, .hint-details[open] summary { color: var(--accent); }
 
-/* Matriz de tasas (3e/3f): tabla pares (dirección del usuario) × Máximo/Mejor/Promedio/Mínimo */
+/* Matriz de tasas (3g): tasas laterales por US$ (PEN/COP/CLP/MXN ×
+ * Máximo/Mejor/Promedio/Mínimo) con toggle Compra/Venta. */
+.matriz-toggle {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
 .matriz-table {
   width: 100%;
   border-collapse: collapse;

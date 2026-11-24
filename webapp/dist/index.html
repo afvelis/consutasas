@@ -103,7 +103,7 @@
         <input id="casos-esc-comision" type="number" inputmode="decimal" step="any" min="0" max="100" autocomplete="off">
         <!-- 3f: la explicación larga va dentro de <details> discreto (no siempre visible) -->
         <details class="hint-details"><summary>Detalle</summary>
-        <p class="muted hint">Matriz por lado: Máximo / Mejor / Promedio / Mínimo. Máximo (tercer anuncio) = tercer anuncio de la lista por defecto de cada plataforma (Binance y Bybit), tomando el mayor de los dos; puede quedar por debajo del Mejor porque el tercer anuncio no pasa por el filtro de ejecutabilidad. Mejor = mejor precio del libro a 40 US$ equivalentes (mínimo en compra / máximo en venta). Promedio = media de anuncios ejecutables; Mínimo = menor anuncio ejecutable. Si ingresas una tasa manual, ella manda sobre la del sistema y se muestra el factor de seguridad = (sistema − manual)/sistema × 100 por lado (negativo = recargo).</p>
+        <p class="muted hint">Matriz por lado: Máximo / Mejor / Promedio / Mínimo. Máximo = mayor precio de TODOS los anuncios del lado; Mínimo = menor precio; Promedio = media aritmética de todos los anuncios (Máximo ≥ Promedio ≥ Mínimo). Mejor = precio ejecutable conservador del libro a 40 US$ equivalentes (máximo en compra / mínimo en venta); queda entre Mínimo y Máximo, cerca de MAX en compra y cerca de MIN en venta. Si ingresas una tasa manual, ella manda sobre la del sistema y se muestra el factor de seguridad = (sistema − manual)/sistema × 100 por lado (negativo = recargo).</p>
         </details>
         <div id="casos-escenario" aria-live="polite"></div>
       </div>

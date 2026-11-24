@@ -135,47 +135,33 @@ class RatesModel:
         return ex
 
     def _ad_rate(self, code, side, amount_usd, mode):
-        """adRateAt (3e): ejecutables = min<=au*price<=max y available>=au.
-        best = mejor precio evaluado a 40 US$ equivalentes (compra min / venta
-        max), INDEPENDIENTE del monto del caso. average/min usan el monto real
-        (average: media aritmética de los ejecutables; min: el menor).
-        max = tercer anuncio de la lista por defecto de cada plataforma (campo
-        platform, Binance/Bybit); el máx del lado = mayor de los dos; <3 → último.
-        Fallback: libro vacío → media FX; average sin ejecutables → media FX;
-        best/min sin ejecutables → None (el motor cae a la media). Sin 2% (3e)."""
+        """adRateAt (3g): MAX/MIN/AVG sobre TODOS los anuncios del lado, SIN
+        filtro de ejecutabilidad: max = mayor price; min = menor price;
+        average = media aritmética de todos. best = mejor precio EJECUTABLE
+        evaluado a 40 US$ equivalentes (compra min / venta max), independiente
+        del monto del caso (queda entre MIN y MAX por construcción).
+        Fallback: libro vacío → media FX; libro sin prices usables (acá no
+        ocurre: book ya filtra price None) → media FX. MAX ≥ AVG ≥ MIN."""
         ads = self.book(code, side)
         media = self.media(code, side)
         if not ads:
             return media
         if mode == "best":
+            # Criterio conservador (decisión del usuario tras 3g): compra = MAYOR
+            # price ejecutable (pagar más); venta = MENOR (recibir menos). toca
+            # cerca de MAX en compra y cerca de MIN en venta, dentro [MIN, MAX].
             ex = self._executable(code, side, self.BEST_REF_USD)
             if not ex:
                 return None
-            return min(ex) if side == "compra" else max(ex)
+            return max(ex) if side == "compra" else min(ex)
         if mode == "average":
-            ex = self._executable(code, side, amount_usd)
-            return sum(ex) / len(ex) if ex else media
+            return sum(a["price"] for a in ads) / len(ads)
+        if mode == "max":
+            return max(a["price"] for a in ads)
         if mode == "min":
-            ex = self._executable(code, side, amount_usd)
-            return min(ex) if ex else None
-        groups, order = {}, []
-        for a in ads:
-            plat = a.get("platform") or "(sin plataforma)"
-            if plat not in groups:
-                groups[plat] = []
-                order.append(plat)
-            p = _fp(a.get("price"))
-            if p is not None:
-                groups[plat].append(p)
-        best = None
-        for plat in order:
-            lst = groups[plat]
-            if not lst:
-                continue
-            pick = lst[2] if len(lst) >= 3 else lst[-1]
-            if best is None or pick > best:
-                best = pick
-        return best
+            return min(a["price"] for a in ads)
+        raise AssertionError("modo desconocido: " + str(mode))
+
 
     def _rates(self, pair, direction, om, dm, amount_usd):
         """Pasada del motor: si un lado no tiene ad ejecutable el motor cae a la media
@@ -236,16 +222,25 @@ class RatesModel:
         delivered = _r2(net_usd * rd)
         return {"deposit": dep, "delivered": delivered, "originRate": ro, "destRate": rd}
 
-def matriz_cell(model, origin, dest, mode):
-    """Celda de la matriz 3f = tasa B por A (venta dest / compra orig) a 40 US$ eq.
-    Replica matrizFx/renderMatriz (tasas.js): compra del ORIGEN, venta del DESTINO."""
-    ro = model._ad_rate(origin, "compra", 40.0, mode)
-    rd = model._ad_rate(dest, "venta", 40.0, mode)
-    if ro is None or rd is None:
-        return None  # la cura muestra '—' cuando el motor no da tasa (nunca inventa)
-    return fmt_rate4(rd / ro)
+def fmt_matriz(v, code):
+    """fmt(v, dec(code)) del app (es-VE): max 4 decimales (2 para CLP), mínimo 2."""
+    d = 2 if code == "CLP" else 4
+    s = f"{float(v):,.{d}f}"
+    head, frac = s.split(".")
+    frac = frac.rstrip("0") or "00"
+    if len(frac) < 2: frac += "0"
+    return head.replace(",", ".") + "," + frac
 
-ROWS_3F = ["PEN/VES", "COP/VES", "CLP/VES", "MXN/VES", "PEN/COP", "PEN/CLP", "COP/CLP"]
+def matriz_cell(model, code, side, mode):
+    """Celda de la matriz 3g = TASA LATERAL del fiat/side elegido (sin comisión):
+    réplica de matrizRate (tasas.js) = _ad_rate con fallback a la media FX."""
+    r = model._ad_rate(code, side, 40.0, mode)
+    if r is None:
+        r = model.media(code, side)
+    return fmt_matriz(r, code) if r is not None else None
+
+MATRIZ_ROWS_3G = ["PEN/USD", "COP/USD", "CLP/USD", "MXN/USD"]
+MATRIZ_MODES = ("max", "best", "average", "min")
 
 def load_snapshot(path):
     with open(path, encoding="utf-8") as fh:
@@ -401,7 +396,7 @@ with sync_playwright() as p:
     # ---------- 2b) 3e: cambiar destino/origen de la matriz recalcula desglose + panel ----------
     page.click("#casos-esc-dest [data-sc-mode='max']")
     page.wait_for_timeout(300)
-    check(f"3e: destino “Máximo” (tercer anuncio por plataforma) → desglose {VAL_BMAX}",
+    check(f"3g: destino “Máximo” (mayor price de todos los anuncios) → desglose {VAL_BMAX}",
           VAL_BMAX in result_text(page) and esc_active(page, "#casos-esc-dest") == ["max"],
           result_text(page)[:300].replace("\n", " | "))
     page.click("#casos-esc-dest [data-sc-mode='average']")
@@ -409,9 +404,9 @@ with sync_playwright() as p:
     check(f"3e: destino “Promedio” → desglose {VAL_BAVG}",
           VAL_BAVG in result_text(page) and esc_active(page, "#casos-esc-dest") == ["average"],
           result_text(page)[:300].replace("\n", " | "))
-    # Bug 3d: el Promedio es la MEDIA DE LOS ANUNCIOS (no la media FX) y SIN
-    # aviso de libro (“adUsed null” no es fallback). En 3e el Máximo es el TERCER
-    # anuncio por plataforma (no el mayor price): no se ordena contra Promedio.
+    # Bug 3d + 3g: el Promedio es la MEDIA DE TODOS LOS ANUNCIOS (no la media FX)
+    # y SIN aviso de libro (“adUsed null” no es fallback). En 3g el Máximo es el
+    # MAYOR price de todos, así que MAX ≥ AVG por construcción.
     _amt = 100.0 / EXP_BB["originRate"]  # monto USD de la pasada 2 del motor (dep/ro0)
     _ex_avg = snap._ad_rate("VES", "venta", _amt, "average")
     _ex_max = snap._ad_rate("VES", "venta", _amt, "max")
@@ -427,9 +422,12 @@ with sync_playwright() as p:
     _o_best = snap._ad_rate("PEN", "compra", _amt, "best")
     _o_avg = snap._ad_rate("PEN", "compra", _amt, "average")
     _o_max = snap._ad_rate("PEN", "compra", _amt, "max")
-    check(f"3d: origen “Promedio” = media de anuncios ({_o_avg:.4f}) ≠ media FX ({pen_media_c}) y Mejor ≤ Promedio ≤ Máximo",
+    _o_min = snap._ad_rate("PEN", "compra", _amt, "min")
+    check(f"3g: origen “Promedio” = media de TODOS los anuncios ({_o_avg:.4f}) ≠ media FX ({pen_media_c}) y MIN ≤ AVG ≤ MAX",
           abs(EXPA_O["originRate"] - _o_avg) < 1e-9 and _o_avg != pen_media_c
-          and _o_best <= _o_avg <= _o_max, f"avg={EXPA_O['originRate']} media={pen_media_c} best={_o_best} max={_o_max}")
+          and _o_min <= _o_avg <= _o_max, f"avg={EXPA_O['originRate']} media={pen_media_c} min={_o_min} max={_o_max}")
+    check("3g: origen BEST independiente (40 US$ eq) queda entre MIN y MAX del libro (puede superar al Promedio de todos los ads: los más baratos pueden no ser ejecutables a 40 US$)",
+          _o_min <= _o_best <= _o_max, f"min={_o_min} best={_o_best} max={_o_max}")
     page.click("#casos-esc-origin [data-sc-mode='average']")
     page.wait_for_timeout(300)
     check(f"3d: origen+destino “Promedio” → desglose {VAL_AVG_O}, dos etiquetas “Promedio de anuncios” y sin aviso de libro",
@@ -453,9 +451,9 @@ with sync_playwright() as p:
     check(f"3e: vuelta al default Mejor/Mejor → desglose {VAL_BB}",
           VAL_BB in result_text(page) and esc_active(page, "#casos-esc-origin") == ["best"]
           and esc_active(page, "#casos-esc-dest") == ["best"])
-    # 3e: Máximo = tercer anuncio por plataforma (no el mayor price); queda dentro del libro.
+    # 3g: Máximo = mayor price de todos los anuncios del lado; dentro del libro por definición.
     _ves_book_min = min(a["price"] for a in snap.book("VES", "venta"))
-    check("3e: Máximo (tercer anuncio por plataforma) queda dentro del rango del libro de venta VES",
+    check("3g: Máximo (mayor price de todos) queda dentro del rango del libro de venta VES",
           _ves_book_min <= _ex_max <= _ves_book_max, f"max={_ex_max} libro={_ves_book_min}..{_ves_book_max}")
 
     # Par SIN VES (PEN/COP, 3c): reset por par ⇒ default Mejor/Mejor; botones
@@ -475,7 +473,7 @@ with sync_playwright() as p:
     check("3c: COP→PEN 100 mejor/mejor = valor derivado del snapshot vivo",
           VAL_BEST_NV in page.inner_text("#casos-resultado"),
           page.inner_text("#casos-resultado")[:300].replace("\n", " | "))
-    # 3c: flujo PEN→COP 100 (ab-fwd): Mejor (default) y Máximo (tercer anuncio por plataforma, sin 2%)
+    # 3c: flujo PEN→COP 100 (ab-fwd): Mejor (default) y Máximo (mayor price, sin 2%)
     page.click("#casos-modos [data-modo='ab-fwd']")
     page.wait_for_timeout(300)
     check("3c: modo ab-fwd activo (PEN→COP) conservando Mejor/Mejor por defecto",
@@ -546,33 +544,77 @@ with sync_playwright() as p:
           page.evaluate("getComputedStyle(document.getElementById('casos-obs')).maxWidth") == "220px",
           page.evaluate("getComputedStyle(document.getElementById('casos-monto')).maxWidth"))
 
-    # ---------- 2c) Tasas: Matriz 3f (dirección del usuario: celda = B por A) ----------
+    # ---------- 2c) Tasas: Matriz 3g (tasas laterales por US$, sin comisión) ----------
     page.click("button[data-tab='tasas']")
     page.click("#btn-matriz")
     page.wait_for_timeout(300)
     mrows = page.eval_on_selector_all(
         "#ta-matriz .matriz-table tbody tr",
         "trs => trs.map(tr => Array.from(tr.children).map(td => td.textContent.trim()))")
-    check("3f matriz: filas en dirección del usuario (PEN/VES … COP/CLP), no la inversa guardada (VES/PEN)",
-          [r[0] for r in mrows] == ROWS_3F, str([r[0] for r in mrows]))
-    exp_penv = {m: matriz_cell(snap, "PEN", "VES", m) for m in ("max", "best", "average", "min")}
-    exp_copv = {m: matriz_cell(snap, "COP", "VES", m) for m in ("max", "best", "average", "min")}
-    print(f"[snapshot] matriz PEN/VES (Bs por PEN): MAX {exp_penv['max']} BEST {exp_penv['best']} AVG {exp_penv['average']} MIN {exp_penv['min']}")
-    print(f"[snapshot] matriz COP/VES (Bs por COP): MAX {exp_copv['max']} BEST {exp_copv['best']} AVG {exp_copv['average']} MIN {exp_copv['min']}")
-    check(f"3f matriz: PEN/VES = Bs por PEN — MAX {exp_penv['max']} BEST {exp_penv['best']} AVG {exp_penv['average']} MIN {exp_penv['min']} (derivado del snapshot vivo)",
-          mrows[0][1:] == [exp_penv[m] for m in ("max", "best", "average", "min")],
-          f"got={mrows[0][1:]} exp={[exp_penv[m] for m in ('max','best','average','min')]}" if mrows else "sin filas")
-    check(f"3f matriz: COP/VES = Bs por COP — MAX {exp_copv['max']} BEST {exp_copv['best']} AVG {exp_copv['average']} MIN {exp_copv['min']} (derivado del snapshot vivo)",
-          mrows[1][1:] == [exp_copv[m] for m in ("max", "best", "average", "min")],
-          f"got={mrows[1][1:]} exp={[exp_copv[m] for m in ('max','best','average','min')]}" if mrows else "sin filas")
-    check("3f matriz: la tasa inversa NO aparece (PEN/VES > 1 y COP/VES < 1 Bs, con cota B por A)",
-          all(parse_cell(c) > 1 for c in mrows[0][1:] if c != "—") and
-          all(parse_cell(c) < 1 for c in mrows[1][1:] if c != "—"),
-          str(mrows[0][:3]) if mrows else "")
-    check("3f matriz: hint dentro de <details><summary>Detalle</summary> en la tabla",
+    check("3g matriz: filas exactas PEN/USD, COP/USD, CLP/USD, MXN/USD (sin cruces PEN/COP ni VES)",
+          [r[0] for r in mrows] == MATRIZ_ROWS_3G and
+          all("VES" not in r[0] and "/" == r[0][-4] for r in mrows), str([r[0] for r in mrows]))
+    mtxt = page.inner_text("#ta-matriz")
+    check("3g matriz: nota «Mercado (sin comisión). Casos incluye comisión del cliente.» visible y toggle Compra default",
+          "Mercado (sin comisión). Casos incluye comisión del cliente." in mtxt and
+          page.eval_on_selector("#ta-matriz [data-matriz-side='compra']", "e => e.getAttribute('aria-pressed')") == "true" and
+          page.eval_on_selector("#ta-matriz [data-matriz-side='venta']", "e => e.getAttribute('aria-pressed')") == "false", "")
+    for side_lbl, side in (("compra", "compra"), ):
+        for code in ("PEN", "COP", "CLP", "MXN"):
+            exp = [matriz_cell(snap, code, side, m) for m in MATRIZ_MODES]
+            row = next((r for r in mrows if r[0] == code + "/USD"), None)
+            check(f"3g matriz compra {code}/USD — MAX {exp[0]} BEST {exp[1]} AVG {exp[2]} MIN {exp[3]} (= rateScenarios crudo, sin comisión)",
+                  row is not None and row[1:] == exp,
+                  f"got={(row or [None, ''])[1:]} exp={exp}")
+            vals = [parse_cell(c) for c in (row or [None])[1:] if c != "—"]
+            check(f"3g matriz compra {code}/USD: MAX ≥ AVG ≥ MIN (invariante 3g)",
+                  len(vals) == 4 and vals[0] >= vals[2] >= vals[3], str(vals))
+    def vals_of(rows, code):
+        row = next((r for r in rows if r[0] == code + "/USD"), None)
+        return [parse_cell(c) for c in (row or [None])[1:] if c != "—"]
+    check("3g matriz compra: rangos PEN>1 y <10 · COP>1000 · CLP>100 · MXN>10",
+          all(1 < v < 10 for v in vals_of(mrows, "PEN")) and
+          all(v > 1000 for v in vals_of(mrows, "COP")) and
+          all(v > 100 for v in vals_of(mrows, "CLP")) and
+          all(v > 10 for v in vals_of(mrows, "MXN")),
+          str([vals_of(mrows, c) for c in ("PEN", "COP", "CLP", "MXN")]))
+    print("[snapshot] tasas laterales 3g COMPRA (MAX/BEST/AVG/MIN): " + "; ".join(
+        f"{code} {matriz_cell(snap, code, 'compra', 'max')}/{matriz_cell(snap, code, 'compra', 'best')}/{matriz_cell(snap, code, 'compra', 'average')}/{matriz_cell(snap, code, 'compra', 'min')}"
+        for code in ("PEN", "COP", "CLP", "MXN")))
+    print("[snapshot] tasas laterales 3g VENTA (MAX/BEST/AVG/MIN): " + "; ".join(
+        f"{code} {matriz_cell(snap, code, 'venta', 'max')}/{matriz_cell(snap, code, 'venta', 'best')}/{matriz_cell(snap, code, 'venta', 'average')}/{matriz_cell(snap, code, 'venta', 'min')}"
+        for code in ("PEN", "COP", "CLP", "MXN")))
+    # Toggle a Venta
+    page.click("#ta-matriz [data-matriz-side='venta']")
+    page.wait_for_timeout(250)
+    mrowsV = page.eval_on_selector_all(
+        "#ta-matriz .matriz-table tbody tr",
+        "trs => trs.map(tr => Array.from(tr.children).map(td => td.textContent.trim()))")
+    check("3g matriz venta: toggle activo (aria-pressed Venta=true, Compra=false)",
+          page.eval_on_selector("#ta-matriz [data-matriz-side='venta']", "e => e.getAttribute('aria-pressed')") == "true" and
+          page.eval_on_selector("#ta-matriz [data-matriz-side='compra']", "e => e.getAttribute('aria-pressed')") == "false", "")
+    for code in ("PEN", "COP", "CLP", "MXN"):
+        expV = [matriz_cell(snap, code, "venta", m) for m in MATRIZ_MODES]
+        row = next((r for r in mrowsV if r[0] == code + "/USD"), None)
+        check(f"3g matriz venta {code}/USD — MAX {expV[0]} BEST {expV[1]} AVG {expV[2]} MIN {expV[3]} (= rateScenarios crudo lado venta)",
+              row is not None and row[1:] == expV,
+              f"got={(row or [None, ''])[1:]} exp={expV}")
+        valsV = [parse_cell(c) for c in (row or [None])[1:] if c != "—"]
+        check(f"3g matriz venta {code}/USD: MAX ≥ AVG ≥ MIN", len(valsV) == 4 and valsV[0] >= valsV[2] >= valsV[3], str(valsV))
+    check("3g matriz venta: rangos PEN>1 y <10 · COP>1000 · CLP>100 · MXN>10",
+          all(1 < v < 10 for v in vals_of(mrowsV, "PEN")) and
+          all(v > 1000 for v in vals_of(mrowsV, "COP")) and
+          all(v > 100 for v in vals_of(mrowsV, "CLP")) and
+          all(v > 10 for v in vals_of(mrowsV, "MXN")),
+          str([vals_of(mrowsV, c) for c in ("PEN", "COP", "CLP", "MXN")]))
+    page.click("#ta-matriz [data-matriz-side='compra']")
+    page.wait_for_timeout(250)
+    check("3g matriz: toggle de vuelta a Compra",
+          page.eval_on_selector("#ta-matriz [data-matriz-side='compra']", "e => e.getAttribute('aria-pressed')") == "true", "")
+    check("3g matriz: hint dentro de <details><summary>Detalle</summary> en la tabla",
           page.eval_on_selector_all("#ta-matriz details.hint-details",
                                     "els => els.map(e => e.querySelector('summary').textContent.trim())") == ["Detalle"] and
-          "Celda = unidades de B por 1 A" in page.eval_on_selector("#ta-matriz details.hint-details", "e => e.textContent"), "")
+          "Tasa lateral por 1 US$" in page.eval_on_selector("#ta-matriz details.hint-details", "e => e.textContent"), "")
     page.screenshot(path="/tmp/shot-matriz.png", full_page=True)
 
     # ---------- 2c-3f) P1 móvil: la matriz scrollea dentro de su caja (375px) ----------

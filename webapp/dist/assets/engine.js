@@ -412,7 +412,8 @@
   var BEST_REF_USD = 40;
 
   /* Anuncios ejecutables para un monto USD dado: min ≤ amt·price ≤ max y
-   * available ≥ amt. Mismo filtro para best(40)/average/min. */
+   * available ≥ amt. En 3g solo BEST usa este filtro: MAX/MIN/AVG toman TODOS
+   * los anuncios del lado, sin filtro. */
   function adsExecutable(origAds, amtUsd) {
     var out = [];
     for (var i = 0; i < origAds.length; i++) {
@@ -432,32 +433,33 @@
   }
 
   /* Busca la tasa de un anuncio para fiat/side dado un amountUsd.
-   * Filtro ejecutable: min ≤ amountUsd·price ≤ max y available ≥ amountUsd.
-   * mode='best' → compra = min(price), venta = max(price) entre ejecutables
-   *   evaluados a BEST_REF_USD = 40 USD equivalentes (min/price ≤ 40 ≤ max/price);
-   *   monto del caso no afecta (decisión 3e).
-   * mode='average' → media aritmética de los price de los anuncios ejecutables
-   *   (mismo filtro con el monto real del caso); sin ejecutables → media FX de
-   *   unitsPerUsdCompra/Venta del fiat (fallback con source 'media(...)').
-   * mode='min' → menor price entre los ejecutables (monto real del caso).
-   * mode='max' → MÁXIMO por plataforma (3e): tercer anuncio de la lista por
-   *   defecto de cada plataforma (campo `platform`, Binance/Bybit); el MAX del
-   *   lado = mayor de los terceros. Sin cálculos extra: sin filtro min/max/
-   *   available; si una plataforma tiene <3 anuncios se usa su último y avisa
-   *   (warnings en el resultado). Libro vacío → media FX.
-   * Fallback: ads vacías → media FX; filtrado vacío → null (el panel cae a la media).
-   * Devuelve {rate, ad, source, mode, adsCount?, warnings?} o null.
-   * `rate` es en unitsPerUsd (compra) o (venta).
-   * `ads` = array de {price, min, max, available, platform} o null (usa media FX). */
+ * 3g — semántica MAX/MIN/AVG sobre TODOS los anuncios del lado (sin filtro):
+ *   mode='best' → precio EJECUTABLE conservador a la referencia fija 40 USD
+ *   (BEST_REF_USD): min ≤ 40·price ≤ max y available ≥ 40. Criterio
+ *   conservador (decisión del usuario tras 3g): compra = MAYOR price
+ *   ejecutable (se asume pagar más); venta = MENOR price ejecutable (se
+ *   asume recibir menos); el monto del caso no afecta (decisión 3e).
+ *   mode='average' → media aritmética del price de TODOS los anuncios del lado
+ *   (sin filtro min/max/available); garante de MAX ≥ AVG ≥ MIN. ad=null,
+ *   adsCount = nº de anuncios promediados.
+ *   mode='min' → MENOR price de todos los anuncios del lado (sin filtro).
+ *   mode='max' → MAYOR price de todos los anuncios del lado (sin filtro): el
+ *   MAX de la lista es el mayor, como en el Excel/Python del usuario (antes, 3e
+ *   usaba el tercer anuncio por plataforma, definición rechazada).
+ * Libro vacío → media FX de unitsPerUsdCompra/Venta del fiat (fallback con
+ * source 'media(...)'); libro con prices no utilizables → null (el panel cae a
+ * la media con aviso). Devuelve {rate, ad, source, mode, adsCount?} o null.
+ * `rate` es en unitsPerUsd (compra) o (venta).
+ * `ads` = array de {price, min, max, available, platform} o null (usa media FX).
+ * Sin agrupado por plataforma ni avisos: MAX ≥ AVG ≥ MIN por construcción. */
   function adRateAt(fx, fiat, side, amountUsd, mode, ads) {
     if (!fiat || !side || !amountUsd || !mode) return null;
     var origAds = Array.isArray(ads) ? ads : [];
-    var amt = finitePositive(mode === 'best' ? BEST_REF_USD : num(amountUsd));
-    if (amt == null) return null;
-    var adsArr = adsExecutable(origAds, amt);
+    if (finitePositive(num(amountUsd)) == null) return null;
 
     // Fallback a la media FX del snapshot (solo con libro vacío; con libro sin
-    // ejecutables el resultado es null y caseQuoteScenario cae a la media con aviso).
+    // prices utilizables el resultado es null y caseQuoteScenario cae a la
+    // media con aviso).
     function mediaFx() {
       var buyR = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[fiat];
       var sellR = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[fiat];
@@ -466,13 +468,16 @@
       return { rate: r, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode, adsCount: 0 };
     }
 
+    // best (sin cambios en 3g): es el ÚNICO modo con filtro de ejecutabilidad,
+    // y se evalúa a la referencia fija de 40 USD equivalentes (decisión 3e).
     if (mode === 'best') {
+      var adsArr = adsExecutable(origAds, BEST_REF_USD);
       if (adsArr.length) {
         var bestAd = null, bestRate = null;
         for (var i = 0; i < adsArr.length; i++) {
           var p = finitePositive(adsArr[i] && adsArr[i].price);
           if (p == null) continue;
-          var better = bestAd == null || (side === 'compra' ? p < bestRate : p > bestRate);
+          var better = bestAd == null || (side === 'compra' ? p > bestRate : p < bestRate);
           if (better) { bestAd = adsArr[i]; bestRate = p; }
         }
         if (bestAd != null) return { rate: bestRate, ad: bestAd, source: 'ad_best_' + side, mode: mode };
@@ -482,72 +487,48 @@
     }
 
     if (mode === 'min') {
-      // Mínimo: el menor price entre los ejecutables (monto real del caso).
-      if (adsArr.length) {
-        var minAd = null, minRate = null;
-        for (var j = 0; j < adsArr.length; j++) {
-          var pMin = finitePositive(adsArr[j] && adsArr[j].price);
-          if (pMin == null) continue;
-          if (minAd == null || pMin < minRate) { minAd = adsArr[j]; minRate = pMin; }
-        }
-        if (minAd != null) return { rate: minRate, ad: minAd, source: 'ad_min_' + side, mode: mode };
-      }
+      // Mínimo (3g): el MENOR price de TODOS los anuncios del lado, sin filtro.
       if (origAds.length === 0) return mediaFx();
+      var minAd = null, minRate = null;
+      for (var j = 0; j < origAds.length; j++) {
+        var pMin = finitePositive(origAds[j] && origAds[j].price);
+        if (pMin == null) continue;
+        if (minAd == null || pMin < minRate) { minAd = origAds[j]; minRate = pMin; }
+      }
+      if (minAd != null) return { rate: minRate, ad: minAd, source: 'ad_min_' + side, mode: mode };
       return null;
     }
 
     if (mode === 'max') {
-      // Máximo (3e): tercer anuncio de la lista por defecto de cada plataforma
-      // (campo `platform`); el MAX del lado = mayor de los dos terceros. Sin
-      // filtro min/max/available ni cálculos extra. Plataforma con <3 anuncios:
-      // se usa su último y se avisa en `warnings`.
+      // Máximo (3g): el MAYOR price de TODOS los anuncios del lado, sin filtro
+      // (antes, 3e: tercer anuncio por plataforma — definición retirada).
       if (origAds.length === 0) return mediaFx();
-      var order = [], groups = {}, warnings = [];
-      for (var k = 0; k < origAds.length; k++) {
-        var aMax = origAds[k];
-        var plat = aMax && typeof aMax.platform === 'string' && aMax.platform ? aMax.platform : '(sin plataforma)';
-        if (!groups[plat]) { groups[plat] = []; order.push(plat); }
-        var pPlat = finitePositive(aMax && aMax.price);
-        if (pPlat != null) groups[plat].push({ price: pPlat, ad: aMax });
-      }
       var maxAd = null, maxRate = null;
-      for (var gi = 0; gi < order.length; gi++) {
-        var list = groups[order[gi]];
-        if (!list.length) {
-          warnings.push('Máximo ' + fiat + '/' + side + ': plataforma ' + order[gi] + ' sin anuncios útiles; se excluye del Máximo.');
-          continue;
-        }
-        var pick = list.length >= 3 ? list[2] : list[list.length - 1];
-        if (list.length < 3) {
-          warnings.push('Máximo ' + fiat + '/' + side + ': plataforma ' + order[gi] + ' con ' + list.length + ' anuncios (<3): se usa su último anuncio.');
-        }
-        if (maxRate == null || pick.price > maxRate) { maxRate = pick.price; maxAd = pick.ad; }
+      for (var k = 0; k < origAds.length; k++) {
+        var pMax = finitePositive(origAds[k] && origAds[k].price);
+        if (pMax == null) continue;
+        if (maxAd == null || pMax > maxRate) { maxAd = origAds[k]; maxRate = pMax; }
       }
-      if (maxAd == null) return null;
-      var resMax = { rate: maxRate, ad: maxAd, source: 'ad_max_' + side, mode: mode };
-      if (warnings.length) resMax.warnings = warnings;
-      return resMax;
+      if (maxAd != null) return { rate: maxRate, ad: maxAd, source: 'ad_max_' + side, mode: mode };
+      return null;
     }
 
-    // average: media aritmética de los anuncios ejecutables (bug 3d: antes usaba
-    // la media FX y el Promedio podía superar al Máximo). Mismo filtro min/max/
-    // available que best/min con el monto real del caso; el promedio no es un
-    // anuncio único → ad=null y adsCount = nº de anuncios promediados.
+    // average (3g): media aritmética de TODOS los anuncios del lado (no solo
+    // los ejecutables): garantiza MAX ≥ AVG ≥ MIN. El promedio no es un anuncio
+    // único → ad=null y adsCount = nº de anuncios promediados.
     if (mode === 'average') {
-      if (adsArr.length) {
-        var sumA = 0, cntA = 0;
-        for (var m = 0; m < adsArr.length; m++) {
-          var pAvg = finitePositive(adsArr[m] && adsArr[m].price);
-          if (pAvg == null) continue;
-          sumA += pAvg;
-          cntA++;
-        }
-        if (cntA > 0) {
-          return { rate: sumA / cntA, ad: null, source: 'ad_average_' + side, mode: 'average', adsCount: cntA };
-        }
+      if (origAds.length === 0) return mediaFx();
+      var sumA = 0, cntA = 0;
+      for (var m = 0; m < origAds.length; m++) {
+        var pAvg = finitePositive(origAds[m] && origAds[m].price);
+        if (pAvg == null) continue;
+        sumA += pAvg;
+        cntA++;
       }
-      // Fallback: media FX (sin anuncios o sin ejecutables → aviso “no cubre” en la UI).
-      return mediaFx();
+      if (cntA > 0) {
+        return { rate: sumA / cntA, ad: null, source: 'ad_average_' + side, mode: 'average', adsCount: cntA };
+      }
+      return null;
     }
 
     return null;
@@ -555,11 +536,14 @@
 
   /* Calcula los cuatro escenarios (max/best/average/min) para origen y destino.
    * Devuelve { best: { originRate, destRate, originAd, destAd }, average: {...},
-   * min: {...}, max: {...} }.
+   * min: {...}, max: {...} } — 3g: max/average/min sobre TODOS los anuncios
+   * del lado (max = mayor price, min = menor, average = media de todos, sin
+   * filtro ni avisos); best se mantiene ejecutable a 40 USD eq con criterio
+   * conservador (compra = mayor ejecutable, venta = menor ejecutable) y queda
+   * SIEMPRE entre Mínimo y Máximo en ambos lados.
    * `average` además propaga originSource/destSource ('ad_average_<side>' o
    * 'media(<fiat>/<side>)') y originAdsCount/destAdsCount; su originAd/destAd
    * es null (el promedio no es un anuncio único).
-   * `max` propaga los avisos de plataforma con <3 anuncios en `warnings`.
    * `pair` = ['A','B'], `direction` = 'AB' | 'BA'.
    * `rateMode` indica qué side usar (compra/venta).
    * El 2% VES ya no existe (3e): sin safety por modo en ningún lado.
@@ -638,22 +622,14 @@
       scenarios.min.originAd = aMinO;
       scenarios.min.destAd = aMinD;
     }
-    // max (Máximo por plataforma: tercer anuncio, mayor de los dos terceros)
+    // max (mayor price de todos los anuncios del lado, sin filtro — 3g)
     var aMaxO = adRateAt(fx, curA, originSide, amount, 'max', adsA);
     var aMaxD = adRateAt(fx, curB, destSide, amount, 'max', adsB);
-    var maxWarn = [].concat((aMaxO && aMaxO.warnings) || [], (aMaxD && aMaxD.warnings) || []);
-    // Avisos por lado: rateInfo los expone solo si el modo activo de ese lado es
-    // max (caseQuoteScenario); el array unido `warnings` se mantiene para API/tests.
-    scenarios.max.originWarn = (aMaxO && aMaxO.warnings) ? aMaxO.warnings.slice() : [];
-    scenarios.max.destWarn = (aMaxD && aMaxD.warnings) ? aMaxD.warnings.slice() : [];
     if (aMaxO && aMaxD) {
       scenarios.max.originRate = aMaxO.rate;
       scenarios.max.destRate = aMaxD.rate;
       scenarios.max.originAd = aMaxO;
       scenarios.max.destAd = aMaxD;
-      if (maxWarn.length) scenarios.max.warnings = maxWarn;
-    } else if (maxWarn.length) {
-      scenarios.max.warnings = maxWarn;
     }
     return scenarios;
   }
@@ -786,14 +762,9 @@
         originManualRate: originManual, destManualRate: destManual,
         originSecurityFactor: originManual != null ? factorOrigin : null,
         destSecurityFactor: destManual != null ? factorDest : null,
-        // Aviso de plataforma <3 (Máximo) solo cuando el modo activo del lado
-        // correspondiente es max; en Mejor/Promedio/Mínimo el aviso no aplica.
-        warnings: [].concat(
-          (om === 'max' && scenarios.max && scenarios.max.originWarn)
-            ? scenarios.max.originWarn.slice() : [],
-          (dm === 'max' && scenarios.max && scenarios.max.destWarn)
-            ? scenarios.max.destWarn.slice() : []
-        ),
+        // Sin avisos del motor por modo (3g): el Máximo ya no es el tercer
+        // anuncio por plataforma, así que la lista de warnings queda vacía.
+        warnings: [],
         originRate: rateOrigin, destRate: rateDest,
         quotedRate: collect.quotedRate,
         effectiveRate: collect.effectiveRate,

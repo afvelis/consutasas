@@ -611,83 +611,87 @@
     btn.addEventListener('click', saveConfig);
   }
 
-  // ==================== Matriz de pares × MAX/BEST/AVG/MIN (3e/3f) ====================
-  // Botón «Matriz» junto a «Forzar bot»: tabla de pares en dirección del usuario
-  // (A/B) con los 4 modos a 40 USD equivalentes. La celda SIEMPRE es la tasa
-  // cruzada B por A (cotiza A→B: VES por PEN, VES por COP…), NUNCA la inversa:
-  // cada par no dirigido se normaliza con RANK (fuerza PEN>COP>CLP>MXN como
-  // origen, siempre con VES como destino=B/último) y orden de filas: X/VES
-  // primero y luego PEN/COP, PEN/CLP, COP/CLP. Solo valores; la explicación
-  // vive dentro de «Detalle» (discreto). Sin inline (CSP).
-  var RANK = { PEN: 0, COP: 1, CLP: 2, MXN: 3, VES: 4 }; // resto de monedas (USD/EUR) al final
-  function rankOf(code) { return RANK[code] != null ? RANK[code] : 5; }
-  function canonDir(pair) {
-    return rankOf(pair[0]) > rankOf(pair[1]) ? [pair[1], pair[0]] : [pair[0], pair[1]];
+  // ==================== Matriz de tasas laterales por US$ (3g) ====================
+  // Botón «Matriz» junto a «Forzar bot»: filas = fiat en el orden exacto
+  // PEN/USD, COP/USD, CLP/USD, MXN/USD; columnas Máximo / Mejor / Promedio /
+  // Mínimo; toggle Compra/Venta (default Compra). La celda es la TASA LATERAL
+  // del lado elegido (compra = p.compra/unitsPerUsdCompra; venta = p.venta/
+  // unitsPerUsdVenta): tasas de mercado reales SIN comisión («lo que tú
+  // obtienes»; Casos cotiza con comisión: «lo que obtiene el cliente»). Sin
+  // cruces PEN/COP etc. Cálculo con CTEngine.adRateAt (la MISMA matriz
+  // MAX/BEST/AVG/MIN de Casos: Máximo = mayor price de todos los anuncios del
+  // lado; Promedio = media aritmética de todos; Mínimo = menor; Mejor = mejor
+  // ejecutable a 40 US$ eq), con fallback a la media FX del snapshot cuando no
+  // hay libro (nunca inventa). Solo valores; la explicación vive dentro de
+  // «Detalle» (discreto). Sin inline (CSP).
+  var matrizSide = 'compra'; // toggle Compra/Venta (default Compra, en memoria)
+
+  function matrizAds(code, side) {
+    const p = S.rates && S.rates.pairs && S.rates.pairs[code];
+    const ads = p && p.ads && p.ads[side];
+    return Array.isArray(ads) ? ads : [];
   }
-  function matrizFx(origin, dest) {
-    if (!S.fx) return null;
-    if (!S.rates) return S.fx;
-    const fx = Object.assign({}, S.fx);
-    fx.pairs = {};
-    const buyAds = S.rates.pairs && S.rates.pairs[origin] && S.rates.pairs[origin].ads;
-    const sellAds = S.rates.pairs && S.rates.pairs[dest] && S.rates.pairs[dest].ads;
-    if (buyAds && Array.isArray(buyAds.compra)) fx.pairs[origin] = { ads: buyAds.compra };
-    if (sellAds && Array.isArray(sellAds.venta)) fx.pairs[dest] = { ads: sellAds.venta };
-    return fx;
+
+  function matrizRate(code, side, mode) {
+    const eng = globalThis.CTEngine;
+    if (!eng || !S.fx) return null;
+    const r = eng.adRateAt(S.fx, code, side, 40, mode, matrizAds(code, side));
+    if (r != null && typeof r.rate === 'number' && Number.isFinite(r.rate)) return r.rate;
+    // Fallback: media FX del snapshot (nunca inventa; adRateAt ya cae a ella
+    // con libro vacío, aquí se cubre snapshot sin ads ni tasa lateral).
+    const bag = side === 'compra' ? S.fx.unitsPerUsdCompra : S.fx.unitsPerUsdVenta;
+    const m = bag && bag[code];
+    return (typeof m === 'number' && Number.isFinite(m)) ? m : null;
   }
 
   function renderMatriz(data) {
     const holder = el('ta-matriz');
     if (!holder) return;
-    if (!data || !S.fx || !globalThis.CTEngine || !S.ledger) {
-      holder.innerHTML = emptyCard('Matriz sin snapshot o libro: pulsa Actualizar.');
+    if (!data || !S.fx || !globalThis.CTEngine) {
+      holder.innerHTML = emptyCard('Matriz sin snapshot: pulsa Actualizar.');
       return;
     }
-    const eng = globalThis.CTEngine;
-    const st = S.ledger.settings;
-    const all = (st.pairs || []).concat(st.customPairs || []);
     const modes = [
       { id: 'max', label: 'Máximo' },
       { id: 'best', label: 'Mejor' },
       { id: 'average', label: 'Promedio' },
       { id: 'min', label: 'Mínimo' }
     ];
-    const cell = function (scn, mode) {
-      const s = scn && scn[mode];
-      if (s && s.originRate != null && s.destRate != null) return num(s.destRate / s.originRate, 4);
-      return '<span class="muted">—</span>';
+    const rows = ['PEN', 'COP', 'CLP', 'MXN'].map(function (code) {
+      return '<tr><td>' + esc(code + '/USD') + '</td>' + modes.map(function (m) {
+        const r = matrizRate(code, matrizSide, m.id);
+        return '<td>' + (r != null ? num(r, dec(code)) : '<span class="muted">—</span>') + '</td>';
+      }).join('') + '</tr>';
+    }).join('');
+    const sideBtn = function (id, label) {
+      const on = matrizSide === id;
+      return '<button type="button" class="btn btn-small matriz-side' + (on ? ' btn-primary' : '') +
+        '" data-matriz-side="' + id + '" aria-pressed="' + (on ? 'true' : 'false') + '">' + esc(label) + '</button>';
     };
-    // Dirección del usuario: el par no dirigido se normaliza (celda = B por A)
-    // y las filas se ordenan PEN/VES, COP/VES, CLP/VES, MXN/VES, PEN/COP,
-    // PEN/CLP, COP/CLP (cota del RANK; los pares del usuario quedan al final).
-    const rows = all.map(canonDir)
-      .sort(function (x, y) {
-        // X/VES primero (grupo 0), luego el resto por fuerza (PEN>COP>CLP>MXN).
-        var gx = rankOf(x[1]) === 4 && rankOf(x[0]) < 4 ? 0 : 1;
-        var gy = rankOf(y[1]) === 4 && rankOf(y[0]) < 4 ? 0 : 1;
-        if (gx !== gy) return gx - gy;
-        if (x[0] !== y[0]) return rankOf(x[0]) - rankOf(y[0]);
-        return rankOf(x[1]) - rankOf(y[1]);
-      })
-      .map(function (pair) {
-        const fxPair = matrizFx(pair[0], pair[1]);
-        const scn = eng.rateScenarios(st, fxPair, pair, 'AB', 40, 'compra');
-        return '<tr><td>' + esc(pair[0] + '/' + pair[1]) + '</td>' +
-          modes.map(function (m) { return '<td>' + cell(scn, m.id) + '</td>'; }).join('') + '</tr>';
-      }).join('');
-    // P2: nota visible (fuera del Detalle) — los chips de Casos mantienen el
-    // orden de depósito (el modo por defecto deposita B del par), la matriz
-    // usa el orden canónico A/B; no se reetiquetan los chips para no romper
-    // la semántica de depósito ni ct_caso.
     holder.innerHTML = '<div class="card"><h2>Matriz de tasas</h2>' +
-      '<p class="muted hint">Casos: orden de depósito; Matriz: A/B (la celda es B por A).</p>' +
-      '<div class="matriz-scroll"><table class="matriz-table"><thead><tr><th scope="col">Par (A→B)</th>' +
+      '<p class="muted hint">Mercado (sin comisión). Casos incluye comisión del cliente.</p>' +
+      '<div class="matriz-toggle" role="group" aria-label="Lado de la matriz">' +
+      sideBtn('compra', 'Compra') + sideBtn('venta', 'Venta') + '</div>' +
+      '<div class="matriz-scroll"><table class="matriz-table"><thead><tr><th scope="col">Moneda (por 1 US$)</th>' +
       modes.map(function (m) { return '<th scope="col">' + esc(m.label) + '</th>'; }).join('') +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<details class="hint-details"><summary>Detalle</summary>' +
-      '<p class="muted hint">Celda = unidades de B por 1 A (cotiza A→B: PEN/VES entrega VES por PEN). ' +
-      'Matriz Máximo/Mejor/Promedio/Mínimo a 40 US$ equivalentes: en la matriz, Promedio y Mínimo usan ese mismo monto de referencia de 40 US$, no el monto real del caso (el panel Casos sí usa el monto real). Máximo (tercer anuncio) = tercer anuncio de la lista por defecto de Binance y Bybit (mayor de los dos): como no pasa por el filtro de ejecutabilidad, puede quedar por debajo del Mejor (el mejor anuncio ejecutable a 40 US$).</p>' +
+      '<p class="muted hint">Tasa lateral por 1 US$ del lado elegido: Compra = lo que pagas por 1 US$ ' +
+      '(p.compra); Venta = lo que recibes por 1 US$ (p.venta). Tasas de mercado reales, sin comisión: ' +
+      'Máximo = mayor precio de todos los anuncios del lado; Mínimo = menor; Promedio = media aritmética ' +
+      'de todos (Máximo ≥ Promedio ≥ Mínimo); Mejor = precio ejecutable conservador a 40 US$ equivalentes ' +
+      '(el mayor en compra / el menor en venta), entre Mínimo y Máximo. Casos incluye comisión del cliente; ' +
+      'la matriz es lo que tú obtienes.</p>' +
       '</details></div>';
+    // Toggle Compra/Venta por delegación en el holder (funciona con DOM real
+    // y con el DOM simulado de tasas-tests, que no materializa los <button>).
+    holder.addEventListener('click', function (e) {
+      const t = e && e.target;
+      const btn = t && typeof t.closest === 'function' ? t.closest('[data-matriz-side]') : null;
+      if (!btn || matrizSide === btn.dataset.matrizSide) return;
+      matrizSide = btn.dataset.matrizSide;
+      renderMatriz(S && S.rates);
+    });
   }
 
   function bindMatriz() {

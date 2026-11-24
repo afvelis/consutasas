@@ -256,7 +256,8 @@ function makeSandbox(payload) {
     /Detalle P2P VES/.test(vd) && vd.indexOf('1.095,935') >= 0 && vd.indexOf('1.084,0342') >= 0 &&
     /Prom. compra p\u00e1gs\. 1\/2/.test(vd) && vd.indexOf('81 · 81') >= 0);
 
-  /* ---- 3e: Matriz de pares × Máximo/Mejor/Promedio/Mínimo (a 40 US$ eq) ---- */
+  /* ---- 3g: Matriz de tasas laterales por US$ (PEN/COP/CLP/MXN ×
+   * Máximo/Mejor/Promedio/Mínimo, toggle Compra/Venta, sin comisión) ---- */
   const matrizAd = (price, platform) => ({ price: price, min: 0, max: 100000000, available: 1000000, platform: platform });
   const matrizAdCorto = (price, platform, available) => ({ price: price, min: 0, max: 100000000, available: available, platform: platform });
   const MATFIX = {
@@ -277,8 +278,8 @@ function makeSandbox(payload) {
         compra: [matrizAd(4000, 'binance'), matrizAd(4010, 'binance'), matrizAd(4020, 'binance'), matrizAd(4005, 'bybit'), matrizAd(4015, 'bybit'), matrizAd(4030, 'bybit')],
         venta: [matrizAd(4200, 'binance'), matrizAd(4180, 'binance'), matrizAd(4160, 'binance'), matrizAd(4190, 'bybit'), matrizAd(4170, 'bybit'), matrizAd(4150, 'bybit')]
       } },
-      CLP: { code: 'CLP', status: 'ok', compra: 900, venta: 950 },
-      MXN: { code: 'MXN', status: 'ok', compra: 18, venta: 20 }
+      CLP: { code: 'CLP', status: 'ok', compra: 900, venta: 950, ads: { compra: [], venta: [] } },
+      MXN: { code: 'MXN', status: 'ok', compra: 18, venta: 20, ads: { compra: [], venta: [] } }
     },
     eurRef: FIXTURE.eurRef
   };
@@ -290,59 +291,135 @@ function makeSandbox(payload) {
   documentStub.getElementById('ta-matriz').hidden = true; // estado inicial del HTML servido
   (matrizBtn.__listeners['click'] || []).forEach(fn => fn());
   const matrizHtml = htmlLog['ta-matriz'];
-  check('3e matriz: tabla pares × Máximo/Mejor/Promedio/Mínimo a 40 US$ eq, sin 2% (eliminado)',
-    /Matriz de tasas/.test(matrizHtml) && /<th[^>]*>M\u00e1ximo<\/th>/.test(matrizHtml) &&
-    /<th[^>]*>Mejor<\/th>/.test(matrizHtml) && /<th[^>]*>Promedio<\/th>/.test(matrizHtml) &&
-    /<th[^>]*>M\u00ednimo<\/th>/.test(matrizHtml) && matrizHtml.indexOf('2%') < 0 && matrizHtml.indexOf('conservative') < 0,
-    matrizHtml.slice(0, 300));
-  check('3e matriz: una fila por par registrado (7 pares default, cota A→B)',
-    (matrizHtml.match(/<tr><td>/g) || []).length === 7, matrizHtml.slice(0, 500));
-  const filaPENCOP = (matrizHtml.match(/<tr><td>PEN\/COP<\/td>([\s\S]*?)<\/tr>/) || [])[1] || '';
-  check('3e matriz: fila PEN/COP = tasa cruzada dest/origen de cada modo evaluado a 40 US$ eq',
-    filaPENCOP.indexOf('1.235,2941') >= 0 && // Mejor: dest venta 4.200 / orig compra 3,40
-    filaPENCOP.indexOf('1.202,3121') >= 0 && // Máximo: tercer anuncio por plataforma → 4.160 / 3,46 (mayor de los dos)
-    filaPENCOP.indexOf('1.218,3852') >= 0 && // Promedio: medias ejecutables → 4.175 / 3,4267 (redondeo del motor)
-    filaPENCOP.indexOf('1.220,5882') >= 0, // Mínimo: 4.150 / 3,40
-    filaPENCOP.slice(0, 400));
-  check('3e matriz: la celda Mejor respeta el filtro de 40 US$ eq (descarta ads con disp 30 < 40 → 3,40, no 3,00)',
-    filaPENCOP.indexOf('1.400,0000') < 0, matrizHtml.slice(0, 300));
-  /* 3f: dirección del USUARIO — filas A/B en el orden PEN/VES, COP/VES,
-   * CLP/VES, MXN/VES, PEN/COP, PEN/CLP, COP/CLP y la celda SIEMPRE es la tasa
-   * B por A (VES por PEN), NUNCA la inversa del par guardado (VES/PEN). */
-  const filas3f = (matrizHtml.match(/<tr><td>([A-Z]{3}\/[A-Z]{3})<\/td>/g) || []).map(s => s.replace(/<\/?t[d/r]>|<tr><td>|<\/td>/g, ''));
-  check('3f matriz: filas en dirección del usuario (PEN/VES, COP/VES, CLP/VES, MXN/VES, PEN/COP, PEN/CLP, COP/CLP)',
-    matrizHtml.match(/<tr><td>/g).length === 7 &&
-    filas3f.join(',') === 'PEN/VES,COP/VES,CLP/VES,MXN/VES,PEN/COP,PEN/CLP,COP/CLP',
+
+  // Valores esperados derivados del motor CRUDO (rateScenarios sin comisión =
+  // tasas laterales de mercado: la matriz es "lo que tú obtienes"; Casos es
+  // "lo que obtiene el cliente" con comisión). El ORIGEN de rateScenarios usa
+  // compra y el DESTINO venta: pair [code,'VES'] da la lateral compra; pair
+  // ['VES',code] da la lateral venta.
+  const fxLat = (code, side) => {
+    const fx = engine.buildFx(MATFIX);
+    fx.pairs = { [code]: { ads: MATFIX.pairs[code].ads[side] } };
+    return fx;
+  };
+  // Misma tasa vía rateScenarios crudo (independiente de matrizRate/adRateAt directo):
+  const latScn = (code, side, mode) => {
+    const fx = fxLat(code, side);
+    if (side === 'compra') {
+      const scn = engine.rateScenarios(engine.defaultSettings(), fx, [code, 'VES'], 'AB', 40, 'compra');
+      return (scn[mode] && scn[mode].originRate != null) ? scn[mode].originRate : MATFIX.pairs[code].compra;
+    }
+    const scn = engine.rateScenarios(engine.defaultSettings(), fx, ['VES', code], 'AB', 40, 'compra');
+    return (scn[mode] && scn[mode].destRate != null) ? scn[mode].destRate : MATFIX.pairs[code].venta;
+  };
+  function fmtMatriz(v, code) { // réplica de es-VE en CT.fmt (4 dec; CLP 2; recorta ceros a 2)
+    const d = code === 'CLP' ? 2 : 4;
+    const parts = v.toFixed(d).split('.');
+    const ent = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    let d2 = parts[1].replace(/0+$/, '') || '00';
+    if (d2.length < 2) d2 += '0';
+    return ent + ',' + d2;
+  }
+  const parseVE = s => parseFloat(String(s).replace(/\./g, '').replace(',', '.'));
+  const cellsOf = fila => (fila.match(/<span class="num">([\d.,]+)<\/span>/g) || [])
+    .map(s => parseVE(s.replace(/<span class="num">|<\/span>/g, '')));
+
+  check('3g matriz: nota «Mercado (sin comisión). Casos incluye comisión del cliente.» visible (fuera del Detalle)',
+    /Mercado \(sin comisión\)\. Casos incluye comisión del cliente\./.test(matrizHtml) &&
+    matrizHtml.indexOf('Mercado (sin comisión)') < matrizHtml.indexOf('<details class="hint-details"'),
     matrizHtml.slice(0, 500));
-  const filaPENVES = (matrizHtml.match(/<tr><td>PEN\/VES<\/td>([\s\S]*?)<\/tr>/) || [])[1] || '';
-  const filaCOPVES = (matrizHtml.match(/<tr><td>COP\/VES<\/td>([\s\S]*?)<\/tr>/) || [])[1] || '';
-  check('3f matriz: PEN/VES = Bs por PEN (venta VES / compra PEN), no S/ por Bs (la inversa actual)',
-    filaPENVES.indexOf('323,8235') >= 0 &&   // Mejor: 1.101 / 3,40 (compra PEN descarta 3,00 con disp 30 < 40)
-    filaPENVES.indexOf('317,6301') >= 0 &&   // Máximo: 1.099 / 3,46 (terceros por plataforma)
-    filaPENVES.indexOf('320,5739') >= 0 &&   // Promedio: 1.098,5 / 3,4267 (redondeo del motor)
-    filaPENVES.indexOf('322,3529') >= 0 &&   // Mínimo: 1.096 / 3,40
-    filaPENVES.indexOf('0,0031') < 0 &&      // la inversa (PEN por VES) no aparece
-    filaPENVES.indexOf('0,0030') < 0,
-    filaPENVES.slice(0, 400));
-  check('3f matriz: COP/VES = Bs por COP (venta VES / compra COP), no COP por Bs',
-    filaCOPVES.indexOf('0,2753') >= 0 &&   // Mejor: 1.101 / 4.000
-    filaCOPVES.indexOf('0,2727') >= 0 &&   // Máximo: 1.099 / 4.030
-    filaCOPVES.indexOf('0,2737') >= 0 &&   // Promedio: 1.098,5 / 4.013,3333
-    /0,2740?\b/.test(filaCOPVES),          // Mínimo: 1.096 / 4.000 (es-VE recorta ceros: 0,274)
-    filaCOPVES.slice(0, 400));
-  check('3f matriz: la explicación vive en «Detalle» (<details><summary>) discreto, no siempre visible',
+  check('3g matriz: toggle Compra/Venta con Compra por defecto (aria-pressed=true en Compra)',
+    /matriz-side btn-primary" data-matriz-side="compra" aria-pressed="true">Compra<\/button>/.test(matrizHtml) &&
+    /matriz-side" data-matriz-side="venta" aria-pressed="false">Venta<\/button>/.test(matrizHtml),
+    matrizHtml.slice(0, 800));
+  check('3g matriz: filas exactas PEN/USD, COP/USD, CLP/USD, MXN/USD (4 filas, orden lateral, sin cruces)',
+    (matrizHtml.match(/<tr><td>/g) || []).length === 4 &&
+    matrizHtml.indexOf('<tr><td>PEN/USD</td>') >= 0 && matrizHtml.indexOf('<tr><td>COP/USD</td>') >= 0 &&
+    matrizHtml.indexOf('<tr><td>CLP/USD</td>') >= 0 && matrizHtml.indexOf('<tr><td>MXN/USD</td>') >= 0 &&
+    matrizHtml.indexOf('<tr><td>PEN/USD</td>') < matrizHtml.indexOf('<tr><td>COP/USD</td>') &&
+    matrizHtml.indexOf('<tr><td>COP/USD</td>') < matrizHtml.indexOf('<tr><td>CLP/USD</td>') &&
+    matrizHtml.indexOf('<tr><td>CLP/USD</td>') < matrizHtml.indexOf('<tr><td>MXN/USD</td>') &&
+    matrizHtml.indexOf('PEN/COP') < 0 && matrizHtml.indexOf('/VES') < 0,
+    matrizHtml.slice(0, 900));
+
+  const filaDe = code => (matrizHtml.match(new RegExp('<tr><td>' + code + '/USD</td>([\\s\\S]*?)</tr>')) || [])[1] || '';
+  const filaPEN = filaDe('PEN'), filaCOP = filaDe('COP'), filaCLP = filaDe('CLP'), filaMXN = filaDe('MXN');
+
+  // Compra (default): celda = la MISMA tasa que rateScenario crudo (sin comisión).
+  ['PEN', 'COP', 'CLP', 'MXN'].forEach(function (code) {
+    const fila = filaDe(code);
+    const got = cellsOf(fila);
+    const exp = ['max', 'best', 'average', 'min'].map(m => fmtMatriz(latScn(code, 'compra', m), code));
+    check('3g matriz compra ' + code + ': celdas = ' + exp.join('/') + ' = rateScenarios crudo (sin comisión)',
+      JSON.stringify(got) === JSON.stringify(exp.map(parseVE)),
+      'got=' + JSON.stringify(got) + ' exp=' + JSON.stringify(exp));
+    check('3g matriz compra ' + code + ': MAX ≥ AVG ≥ MIN',
+      got[0] >= got[2] && got[2] >= got[3], JSON.stringify(got));
+  });
+  // Rangos por fiat (compra): PEN 1..10; COP > 1000; CLP > 100; MXN > 10.
+  check('3g matriz compra: rangos PEN>1 y <10 · COP>1000 · CLP>100 · MXN>10',
+    cellsOf(filaPEN).every(v => v > 1 && v < 10) &&
+    cellsOf(filaCOP).every(v => v > 1000) &&
+    cellsOf(filaCLP).every(v => v > 100) &&
+    cellsOf(filaMXN).every(v => v > 10),
+    JSON.stringify([cellsOf(filaPEN), cellsOf(filaCOP), cellsOf(filaCLP), cellsOf(filaMXN)]));
+  // SEMÁTICA 3g en PEN/compra: MAX = mayor (3,46) · MIN = menor (3,00, sin
+  // filtro: el ad de 3,00 con disp 30 < 40 SE INCLUYE) · AVG = media de los 7
+  // ads (23.56/7 ≈ 3,3657) · BEST conservador = MAYOR ejecutable a 40 US$ eq
+  // (3,46 — aquí coincide con MAX: el top del libro es ejecutable).
+  // CT.fmt es-VE (NF4) recorta: min 2 / max 4 decimales.
+  check('3g matriz compra PEN: valores exactos MAX 3,46 · BEST 3,46 (conservador: mayor ejecutable) · AVG 3,3657 · MIN 3,00 (sin filtro)',
+    (() => { const c = cellsOf(filaPEN); return c[0] === 3.46 && c[1] === 3.46 &&
+      Math.abs(c[2] - 23.56 / 7) < 5e-5 && c[3] === 3; })(),
+    'got=' + JSON.stringify(cellsOf(filaPEN)));
+  // BEST compra entre MIN y MAX (relación establecida 3g).
+  check('3g matriz compra PEN: MIN ≤ BEST ≤ MAX',
+    (() => { const c = cellsOf(filaPEN); return c[3] <= c[1] && c[1] <= c[0]; })(), JSON.stringify(cellsOf(filaPEN)));
+
+  // Toggle a VENTA: delegación en el holder (addEventListener del DOM simulado).
+  const mtxHolder = documentStub.getElementById('ta-matriz');
+  (mtxHolder.__listeners['click'] || []).forEach(fn => fn({
+    target: { closest: sel => ({ dataset: { matrizSide: 'venta' } }) }
+  }));
+  const matrizVenta = htmlLog['ta-matriz'];
+  check('3g matriz venta: toggle cambia el lado activo (aria-pressed: Venta=true, Compra=false)',
+    /data-matriz-side="compra" aria-pressed="false">Compra<\/button>/.test(matrizVenta) &&
+    /data-matriz-side="venta" aria-pressed="true">Venta<\/button>/.test(matrizVenta),
+    matrizVenta.slice(0, 800));
+  ['PEN', 'COP', 'CLP', 'MXN'].forEach(function (code) {
+    const fila = (matrizVenta.match(new RegExp('<tr><td>' + code + '/USD</td>([\\s\\S]*?)</tr>')) || [])[1] || '';
+    const got = cellsOf(fila);
+    const exp = ['max', 'best', 'average', 'min'].map(m => fmtMatriz(latScn(code, 'venta', m), code));
+    check('3g matriz venta ' + code + ': celdas = ' + exp.join('/') + ' = rateScenarios crudo lado venta',
+      JSON.stringify(got) === JSON.stringify(exp.map(parseVE)),
+      'got=' + JSON.stringify(got) + ' exp=' + JSON.stringify(exp));
+    check('3g matriz venta ' + code + ': MAX ≥ AVG ≥ MIN', got[0] >= got[2] && got[2] >= got[3], JSON.stringify(got));
+  });
+  // Venta PEN: MAX 3,72 (= BEST venta aquí) · AVG ≈ 3,6867 (22.12/6) · MIN 3,66.
+  const filaPENV = (matrizVenta.match(new RegExp('<tr><td>PEN/USD</td>([\\s\\S]*?)</tr>')) || [])[1] || '';
+  check('3g matriz venta PEN: MAX 3,72 (= BEST venta aquí) · AVG 3,6867 · MIN 3,66',
+    (() => { const c = cellsOf(filaPENV); return c[0] === 3.72 && Math.abs(c[2] - 22.12 / 6) < 5e-5 && c[3] === 3.66; })(),
+    JSON.stringify(cellsOf(filaPENV)));
+  // Volver a Compra (segundo click no cambia si el lado no difiere; click en Compra sí).
+  (mtxHolder.__listeners['click'] || []).forEach(fn => fn({
+    target: { closest: sel => ({ dataset: { matrizSide: 'compra' } }) }
+  }));
+  check('3g matriz: toggle de vuelta a Compra repinta las tasas laterales de compra',
+    /btn-primary" data-matriz-side="compra" aria-pressed="true"/.test(htmlLog['ta-matriz']) &&
+    (htmlLog['ta-matriz'].match(/3,46<\/span>/g) || []).length >= 1, htmlLog['ta-matriz'].slice(0, 600));
+
+  check('3g matriz: la explicación vive en «Detalle» (<details><summary>) discreto',
     /<details class="hint-details"><summary>Detalle<\/summary>/.test(matrizHtml) &&
-    /Celda = unidades de B por 1 A/.test(matrizHtml) &&
+    /Tasa lateral por 1 US\$/.test(matrizHtml) &&
     matrizHtml.indexOf('Matriz de tasas') < matrizHtml.indexOf('<details class="hint-details"'),
-    matrizHtml.slice(-500));
-  check('3f matriz P1/P2: tabla envuelta en .matriz-scroll (scroll interno móvil) y nota visible fuera del Detalle (Casos: orden de depósito; Matriz: A/B)',
+    matrizHtml.slice(-600));
+  check('3g matriz P1: tabla envuelta en .matriz-scroll (scroll interno móvil) y cabecera Moneda (por 1 US$)',
     /<div class="matriz-scroll"><table class="matriz-table"/.test(matrizHtml) &&
     matrizHtml.indexOf('</table></div>') > matrizHtml.indexOf('<div class="matriz-scroll"') &&
-    /Casos: orden de dep[oó]sito; Matriz: A\/B/.test(matrizHtml) &&
-    matrizHtml.indexOf('Casos: orden de dep') < matrizHtml.indexOf('<details class="hint-details"'),
-    matrizHtml.slice(0, 400));
+    /Moneda \(por 1 US\$\)/.test(matrizHtml),
+    matrizHtml.slice(0, 500));
   (matrizBtn.__listeners['click'] || []).forEach(fn => fn());
-  check('3e matriz: toggle oculta y el botón vuelve a «Matriz»',
+  check('3g matriz: toggle oculta y el botón vuelve a «Matriz»',
     documentStub.getElementById('ta-matriz').hidden === true && matrizBtn.textContent === 'Matriz');
   CT.S.rates = savedRatesMatriz;
   CT.S.fx = savedFxMatriz;
