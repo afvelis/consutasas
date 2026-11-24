@@ -366,11 +366,35 @@ try {
     JSON.stringify(mvAds && mvAds.out));
   // Restaurar el ledger que validan los bloques siguientes (balance, histórico…).
   Object.keys(ledBackup).forEach(function (k) { stAds[k] = ledBackup[k]; });
+  // Bug 3d: el Promedio usa la MEDIA DE LOS ANUNCIOS (no la media FX) y, como no
+  // es un anuncio único (adUsed null), NO dispara el aviso “no cubre el monto”.
+  check('3b/3d: setEscenarioModo(origin, average): tasa compra = media de anuncios (3,625), no la media FX (3,5)',
+    CT.setEscenarioModo('origin', 'average') === true &&
+    /3,625/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    !/3,5000/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    /Promedio de anuncios/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    !/media FX/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    !/no cubre el monto/.test(sandbox.document.getElementById('casos-escenario').innerHTML),
+    sandbox.document.getElementById('casos-escenario').innerHTML.slice(0, 600));
+  check('3b/3d: setEscenarioModo(dest, average): tasa venta = media de anuncios (1.090,00) y SIN aviso de libro',
+    CT.setEscenarioModo('dest', 'average') === true &&
+    /1\.090,00/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    (sandbox.document.getElementById('casos-escenario').innerHTML.match(/Promedio de anuncios/g) || []).length === 2 &&
+    !/no cubre el monto/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    !/Sin libro de anuncios/.test(sandbox.document.getElementById('casos-escenario').innerHTML),
+    sandbox.document.getElementById('casos-escenario').innerHTML.slice(0, 600));
   CT.setEscenarioModo('origin', 'conservative'); // vuelve al default para el resto
   CT.setEscenarioModo('dest', 'conservative');
   CT.S.rates = ratesSinAds;
   CT.S.fx = fxSinAds;
   CT.renderTab('casos');
+  // Bug 3d: sin ads, el Promedio cae al fallback media FX y lo ETIQUETA (con aviso).
+  CT.setEscenarioModo('origin', 'average');
+  const escAvgMedia = sandbox.document.getElementById('casos-escenario').innerHTML;
+  check('3b/3d: promedio sin ads → etiqueta “media FX (sin anuncios)” + aviso (fallback, nunca inventa)',
+    /media FX \(sin anuncios\)/.test(escAvgMedia) && !/Promedio de anuncios/.test(escAvgMedia) &&
+    /warnline/.test(escAvgMedia), escAvgMedia.slice(0, 600));
+  CT.setEscenarioModo('origin', 'conservative');
 
   check('3b: comisión editable del escenario por defecto 7 (PEN, defaultCommissionPct)',
     sandbox.document.getElementById('casos-esc-comision').value === '7');

@@ -442,11 +442,16 @@ var arVC = engine.adRateAt(FX, 'PEN', 'venta', 10, 'conservative', adsVentaInlin
 check('adRateAt conservative venta: rate = 3.70 (min price)', arVC.rate === 3.70);
 check('adRateAt conservative venta: source ad_conservative_venta', arVC.source === 'ad_conservative_venta');
 
-// average = media FX (spec) — fuente media(F/side)
+// average = media aritmética de los anuncios ejecutables (bug 3d: ya NO media FX)
 var arA = engine.adRateAt(FX, 'PEN', 'compra', 10, 'average', adsCompraInline);
-check('adRateAt average: rate es numérico', typeof arA.rate === 'number' && isFinite(arA.rate));
-check('adRateAt average: fuente media FX', /media\(PEN\/compra\)/.test(arA.source));
-check('adRateAt average: rate = unitsPerUsdCompra.PEN = 3.5', arA.rate === 3.5);
+check('adRateAt average: rate = media de prices (3.50+3.60+3.75)/3', typeof arA.rate === 'number' && Math.abs(arA.rate - (3.50 + 3.60 + 3.75) / 3) < 1e-9);
+check('adRateAt average: source ad_average_compra', arA.source === 'ad_average_compra');
+check('adRateAt average: ad null (no es un anuncio único) y adsCount 3', arA.ad === null && arA.adsCount === 3);
+// bug 3d: el promedio de anuncios NO es la media FX (3.5)
+check('adRateAt average: NO es la media FX 3.5', arA.rate !== 3.5);
+var arAv = engine.adRateAt(FX, 'PEN', 'venta', 10, 'average', adsVentaInline);
+check('adRateAt average venta: media de prices = 3.80 y source ad_average_venta',
+  Math.abs(arAv.rate - 3.80) < 1e-9 && arAv.source === 'ad_average_venta' && arAv.adsCount === 3);
 // average debe estar entre best y conservative
 check('adRateAt average: mejor ≤ average ≤ conservative', arB.rate <= arA.rate && arA.rate <= arBC.rate);
 
@@ -458,10 +463,18 @@ check('adRateAt best: excluye ad si available < amount', engine.adRateAt(FX, 'PE
 check('adRateAt best: ad con cost=36 dentro [10,50] y available=200 es ejecutable',
   engine.adRateAt(FX, 'PEN', 'compra', 10, 'best', [{ price: 3.60, min: 10, max: 50, available: 200 }]) != null);
 
-// Fallback a media FX cuando ads no son best
+// Fallback a media FX cuando NO hay anuncios ejecutables (ads vacías o filtradas)
 var adsThick = [{ price: 3.30, min: 25, max: 5000, available: 100 }];
 var arF = engine.adRateAt(FX, 'PEN', 'compra', 10, 'average', adsThick);
-check('adRateAt average: media FX para PEN/compra cuando ads no son best', arF != null && arF.source === 'media(PEN/compra)');
+check('adRateAt average: media de anuncios EJECUTABLES (3.30), no media FX', arF != null && arF.rate === 3.30 && arF.source === 'ad_average_compra' && arF.adsCount === 1);
+// ads presentes pero ninguno ejecutable (cost 30 < min 50) → fallback media FX
+var arFb = engine.adRateAt(FX, 'PEN', 'compra', 10, 'average', [{ price: 3.30, min: 50, max: 5000, available: 100 }]);
+check('adRateAt average: sin ejecutables → fallback media FX (3.5, media(PEN/compra), adsCount 0)',
+  arFb != null && arFb.rate === 3.5 && arFb.source === 'media(PEN/compra)' && arFb.adsCount === 0 && arFb.ad === null);
+// ads vacías → fallback a media FX (también en average)
+var arAvgM = engine.adRateAt(FX, 'VES', 'compra', 10, 'average', []);
+check('adRateAt average ads vacías: fallback media FX compra (1000, media(VES/compra))',
+  arAvgM.rate === 1000 && arAvgM.source === 'media(VES/compra)' && arAvgM.adsCount === 0);
 // ads vacías → fallback a media FX
 var arM = engine.adRateAt(FX, 'VES', 'compra', 10, 'best', []);
 check('adRateAt ads vacías: fallback a media FX compra', arM.rate === 1000);
@@ -508,6 +521,16 @@ check('rateScenarios max (con ads): originRate (PEN compra mayor ejecutable) = 3
 check('rateScenarios max (con ads): destRate (VES venta media, sin ads) = 1100', scAds.max.destRate === 1100);
 check('rateScenarios max: conserva conservative VES intacto (venta media 1100)',
   scAds.conservative.destRate === 1100 && scAds.conservative.originRate === 3.75);
+// 3d: average usa la media de los anuncios y propaga source/adsCount (adUsed null)
+check('rateScenarios con ads: average originRate = media de anuncios (3.6166…), no media FX 3.5',
+  Math.abs(scAds.average.originRate - (3.50 + 3.60 + 3.75) / 3) < 1e-9 && scAds.average.originRate !== 3.5);
+check('rateScenarios con ads: average destRate (VES sin ads) = media FX 1100', scAds.average.destRate === 1100);
+check('rateScenarios con ads: average propaga originSource/destSource, adsCount y originAd/destAd null',
+  scAds.average.originSource === 'ad_average_compra' && scAds.average.destSource === 'media(VES/venta)' &&
+  scAds.average.originAdsCount === 3 && scAds.average.destAdsCount === 0 &&
+  scAds.average.originAd == null && scAds.average.destAd == null);
+check('rateScenarios con ads: best ≤ average ≤ max (coherencia bug 3d en compra)',
+  scAds.best.originRate <= scAds.average.originRate && scAds.average.originRate <= scAds.max.originRate);
 
 console.log('\n[14c] Escenario Máximo (3c) — pares SIN VES: mayor price ejecutable, sin 2%');
 // max compra (lista asc) = mayor price = 3.75 (no el primero)
@@ -565,6 +588,21 @@ check('caseQuoteScenario PEN→COP Máximo: rateInfo coherente (efectiva = deliv
 var destMax = qMaxCop.rateInfo.destScenarios.max;
 check('caseQuoteScenario PEN→COP Máximo: destScenarios.max.destRate = 4250 y destAd.price = 4250',
   destMax && Math.abs(destMax.destRate - 4250) < 1e-9 && destMax.destAd && destMax.destAd.rate === 4250);
+// 3d: average con ads PROPAGA source/adsCount y adUsed null; best ≤ average ≤ max
+var qAvgCop = engine.caseQuoteScenario(engine.defaultSettings(), fxCopAds, {
+  pair: ['PEN', 'COP'], direction: 'AB', deposit: 100,
+  originMode: 'average', destMode: 'average',
+  commissionPct: 0.05, terceroOn: false
+});
+check('caseQuoteScenario average PEN→COP: ok', qAvgCop.ok === true);
+check('caseQuoteScenario average PEN→COP: adUsed null (el promedio no es un anuncio único)', qAvgCop.rateInfo.adUsed == null);
+check('caseQuoteScenario average PEN→COP: rateInfo originSource/destSource ad_average_* y adsCount',
+  qAvgCop.rateInfo.originSource === 'ad_average_compra' && qAvgCop.rateInfo.destSource === 'ad_average_venta' &&
+  qAvgCop.rateInfo.originAdsCount === 3 && qAvgCop.rateInfo.destAdsCount === 2);
+check('caseQuoteScenario average PEN→COP: coherencia best ≤ average ≤ max en ambos lados (bug 3d)',
+  qMaxCop.rateInfo.originRate >= qAvgCop.rateInfo.originRate && qAvgCop.rateInfo.originRate >= 3.50 &&
+  qMaxCop.rateInfo.destRate >= qAvgCop.rateInfo.destRate);
+check('caseQuoteScenario average PEN→COP: originRate NO es la media FX 3.5 (era el bug)', qAvgCop.rateInfo.originRate !== 3.5);
 // VES sigue igual: conservative 2% y max coexisten en rateScenarios
 var scVes = engine.rateScenarios(S, FX, ['VES', 'PEN'], 'BA', 10, 'compra');
 check('VES sigue igual: el orden del libro se conserva (best ≤ average ≤ conservative en compra; best ≥ … en venta)',
@@ -833,6 +871,10 @@ var qCons = engine.caseQuoteScenario(Spen, FXreal, {
 // Sin ads, best ≈ average ≈ conservative (todas media FX)
 check('caseQuoteScenario: sin ads, best ≈ average ≈ conservative',
   Math.abs(qBest.delivered - qAvg.delivered) < 0.01 && Math.abs(qAvg.delivered - qCons.delivered) < 0.01);
+// 3d: sin ads, el fallback de average es media FX con source 'media(...)' explícito
+check('caseQuoteScenario average sin ads: rateInfo source media(...) y adsCount 0',
+  qAvg.rateInfo.originSource === 'media(PEN/compra)' && qAvg.rateInfo.destSource === 'media(VES/venta)' &&
+  qAvg.rateInfo.originAdsCount === 0 && qAvg.rateInfo.destAdsCount === 0 && qAvg.rateInfo.adUsed == null);
 
 console.log('\n[16b] caseQuoteScenario: error cases');
 check('caseQuoteScenario: par inválido',

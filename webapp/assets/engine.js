@@ -407,7 +407,9 @@
   /* Busca la mejor tasa de un anuncio para fiat/side dado un amountUsd.
    * Filtra: min <= amountUsd*price <= max  y  available >= amountUsd.
    * mode='best' → compra = min(price), venta = max(price).
-   * mode='average' → media FX de unitsPerUsdCompra/Venta del fiat.
+   * mode='average' → media aritmética de los price de los anuncios ejecutables
+   *   (mismo filtro min/max/available); sin ejecutables → media FX de
+   *   unitsPerUsdCompra/Venta del fiat (fallback con source 'media(...)').
    * mode='conservative' → compra = max(price), venta = min(price).
    * mode='max' → mayor price entre los anuncios ejecutables (en cualquier lado);
    *   mismo filtro min/max/available que best/conservative.
@@ -512,35 +514,38 @@
       return null;
     }
 
-    // average: media FX de unitsPerUsdCompra/Venta (spec)
+    // average: media aritmética de los anuncios ejecutables (bug 3d: antes usaba
+    // la media FX y el Promedio podía superar al Máximo, p.ej. PEN 3,5376 > 3,485).
+    // Mismo filtro min/max/available que best/conservative/max; el promedio no es
+    // un anuncio único → ad=null y adsCount = nº de anuncios promediados.
     if (mode === 'average') {
+      if (Array.isArray(adsArr) && adsArr.length) {
+        var sumA = 0, cntA = 0;
+        for (var _k = 0; _k < adsArr.length; _k++) {
+          var _pAvg = finitePositive(adsArr[_k] && adsArr[_k].price);
+          if (_pAvg == null) continue;
+          sumA += _pAvg;
+          cntA++;
+        }
+        if (cntA > 0) {
+          return { rate: sumA / cntA, ad: null, source: 'ad_average_' + side, mode: 'average', adsCount: cntA };
+        }
+      }
+      // Fallback: media FX (sin anuncios o sin ejecutables → aviso “no cubre” en la UI).
       var buyRA = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[fiat];
       var sellRA = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[fiat];
-      if (side === 'compra') {
-        var rA = finitePositive(buyRA);
-        if (rA != null) return { rate: rA, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: 'average' };
-      } else {
-        var rB = finitePositive(sellRA);
-        if (rB != null) return { rate: rB, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: 'average' };
-      }
-    }
-    // fallback final: media FX
-    var buyR = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[fiat];
-    var sellR = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[fiat];
-    if (side === 'compra') {
-      var rF = finitePositive(buyR);
-      if (rF == null) return null;
-      return { rate: rF, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
-    } else {
-      var rG = finitePositive(sellR);
-      if (rG == null) return null;
-      return { rate: rG, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
+      var rAvg = finitePositive(side === 'compra' ? buyRA : sellRA);
+      if (rAvg == null) return null;
+      return { rate: rAvg, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: 'average', adsCount: 0 };
     }
   }
 
   /* Calcula los cuatro escenarios (best/average/conservative/max) para origen y destino.
    * Devuelve { best: { originRate, destRate, originAd, destAd }, average: {...},
    * conservative: {...}, max: {...} }.
+   * `average` además propaga originSource/destSource ('ad_average_<side>' o
+   * 'media(<fiat>/<side>') y originAdsCount/destAdsCount; su originAd/destAd
+   * es null (el promedio no es un anuncio único).
    * `pair` = ['A','B'], `direction` = 'AB' | 'BA'.
    * `rateMode` indica qué side usar (compra/venta).
    * El 2% NO va aquí; es parámetro de cotización.
@@ -603,8 +608,12 @@
     if (aAvgO && aAvgD) {
       scenarios.average.originRate = aAvgO.rate;
       scenarios.average.destRate = aAvgD.rate;
-      scenarios.average.originAd = aAvgO;
-      scenarios.average.destAd = aAvgD;
+      scenarios.average.originAd = aAvgO.ad; // null: el promedio no es un anuncio único
+      scenarios.average.destAd = aAvgD.ad;
+      scenarios.average.originSource = aAvgO.source;
+      scenarios.average.destSource = aAvgD.source;
+      scenarios.average.originAdsCount = aAvgO.adsCount;
+      scenarios.average.destAdsCount = aAvgD.adsCount;
     }
     // conservative
     var aConsO = adRateAt(fx, curA, originSide, amount, 'conservative', adsA);
@@ -625,6 +634,22 @@
       scenarios.max.destAd = aMaxD;
     }
     return scenarios;
+  }
+
+  /* Fuente de tasa del escenario usado (rateInfo.originSource/destSource):
+   * `average` la expone directa (originSource/destSource → 'ad_average_<side>'
+   * o 'media(<fiat>/<side>)' del fallback); los demás modos la exponen en el
+   * resultado de adRateAt guardado en originAd/destAd. */
+  function scenarioSource(scn, side) {
+    if (!scn) return null;
+    var explicit = scn[side + 'Source'];
+    if (explicit != null) return explicit;
+    var usedAd = scn[side === 'origin' ? 'originAd' : 'destAd'];
+    return (usedAd && usedAd.source) || null;
+  }
+
+  function scenarioAdsCount(scn, side) {
+    return scn && scn[side + 'AdsCount'] != null ? scn[side + 'AdsCount'] : null;
   }
 
   /* Cotización basada en escenarios del panel (motor de escenarios).
@@ -699,6 +724,9 @@
       sOrig.originAd = null;
       sDest.destRate = rateDestMedia;
       sDest.destAd = null;
+      // Fuente explícita del fallback (la UI etiqueta “media FX (sin anuncios)”).
+      sOrig.originSource = 'media(' + origin + '/compra)';
+      sDest.destSource = 'media(' + dest + '/venta)';
       // Guardar media para el escenario elegido
       scenarios[om] = sOrig;
       scenarios[dm] = sDest;
@@ -772,6 +800,10 @@
           originScenarios: scenarios,
           destScenarios: scenarios,
           adUsed: sOrig.originAd,
+          originSource: scenarioSource(sOrig, 'origin'),
+          destSource: scenarioSource(sDest, 'dest'),
+          originAdsCount: scenarioAdsCount(sOrig, 'origin'),
+          destAdsCount: scenarioAdsCount(sDest, 'dest'),
           originRate: rateOrigin, destRate: rateDest,
           quotedRate: quotedRate,
           effectiveRate: round2(delivered / deposit),
@@ -830,6 +862,10 @@
         originScenarios: scenarios,
         destScenarios: scenarios,
         adUsed: sOrig.originAd,
+        originSource: scenarioSource(sOrig, 'origin'),
+        destSource: scenarioSource(sDest, 'dest'),
+        originAdsCount: scenarioAdsCount(sOrig, 'origin'),
+        destAdsCount: scenarioAdsCount(sDest, 'dest'),
         originRate: rateOrigin, destRate: rateDest,
         quotedRate: quotedRate,
         effectiveRate: round2(delivered / depositVal),

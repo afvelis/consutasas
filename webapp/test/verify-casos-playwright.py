@@ -90,8 +90,9 @@ class RatesModel:
     def _ad_rate(self, code, side, amount_usd, mode):
         """adRateAt: filtra ejecutables (min<=au*price<=max y available>=au) y elige
         best=compra[0]/venta[0], conservative=compra[-1]/venta[-1],
-        max=mayor price ejecutable, average=media FX.
-        Fallback: libro vacío → media; todo filtrado → null."""
+        max=mayor price ejecutable, average=media aritmética de los ejecutables
+        (bug 3d: ya no media FX). Fallback: libro vacío o sin ejecutables → media
+        FX en average; en best/conservative/max solo con libro vacío (si no, None)."""
         ads = self.book(code, side)
         media = self.media(code, side)
         ex = []
@@ -115,7 +116,8 @@ class RatesModel:
         if mode == "max":
             if ex: return max(ex)
             return media if len(ads) == 0 else None
-        return media
+        # average: media de los anuncios ejecutables; sin ejecutables → media FX
+        return sum(ex) / len(ex) if ex else media
 
     def _rates(self, pair, direction, om, dm, amount_usd):
         """Pasada del motor: si un lado no tiene ad ejecutable el motor cae a la media
@@ -192,11 +194,13 @@ DIRECTION = "BA"
 EXPC = snap.quote(PAIR, DIRECTION, "conservative", "conservative", deposit=100.0)  # default 2%/2%
 EXPB_DEST = snap.quote(PAIR, DIRECTION, "conservative", "best", deposit=100.0)     # destino “Mejor”
 EXPA_DEST = snap.quote(PAIR, DIRECTION, "conservative", "average", deposit=100.0)  # destino “Promedio”
+EXPA_O = snap.quote(PAIR, DIRECTION, "average", "average", deposit=100.0)          # ambos lados “Promedio”
 EXPB_ORIG = snap.quote(PAIR, DIRECTION, "best", "conservative", deposit=100.0)     # origen “Mejor”
 EXP_REV = snap.quote(PAIR, DIRECTION, "conservative", "conservative", target=EXPC["delivered"])
 VAL_CONS = fmt_app(EXPC["delivered"], "VES")
 VAL_BEST_D = fmt_app(EXPB_DEST["delivered"], "VES")
 VAL_AVG_D = fmt_app(EXPA_DEST["delivered"], "VES")
+VAL_AVG_O = fmt_app(EXPA_O["delivered"], "VES")
 VAL_BEST_O = fmt_app(EXPB_ORIG["delivered"], "VES")
 VAL_REV_DEP = fmt_app(EXP_REV["deposit"], "PEN")
 RATE4_O = fmt_rate4(EXPC["originRate"])
@@ -318,6 +322,37 @@ with sync_playwright() as p:
     page.wait_for_timeout(300)
     check(f"3b: destino “Promedio” → desglose {VAL_AVG_D} y etiqueta “Sin 2%”",
           VAL_AVG_D in result_text(page) and "SIN 2%" in panel_text(page).upper(), result_text(page)[:300].replace("\n", " | "))
+    # Bug 3d: el Promedio es la MEDIA DE LOS ANUNCIOS (no la media FX) y SIN
+    # aviso de libro (“adUsed null” no es fallback). En el lado venta (destino)
+    # Mejor = Máximo = mayor price ≥ Promedio; en el lado compra (origen) se
+    # cumple Mejor ≤ Promedio ≤ Máximo (el bug viejo daba Promedio mediaFX > Máximo).
+    _amt = 100.0 / EXPC["originRate"]  # monto USD de la pasada 2 del motor (dep/ro0)
+    _ex_avg = snap._ad_rate("VES", "venta", _amt, "average")
+    _ex_max = snap._ad_rate("VES", "venta", _amt, "max")
+    check(f"3d: destino “Promedio” = media de anuncios ({_ex_avg:.4f}) ≠ media FX ({ves_media_v}) y Promedio ≤ Máximo",
+          abs(EXPA_DEST["destRate"] - _ex_avg) < 1e-9 and _ex_avg != ves_media_v
+          and _ex_avg <= _ex_max, f"avg={EXPA_DEST['destRate']} media={ves_media_v} max={_ex_max}")
+    check("3d: destino “Promedio” etiqueta “Promedio de anuncios” y SIN aviso de “no cubre el monto”",
+          "PROMEDIO DE ANUNCIOS" in panel_text(page).upper()
+          and "NO CUBRE EL MONTO" not in panel_text(page).upper(), panel_text(page)[:300].replace("\n", " | "))
+    # 3d lado origen (PEN compra): Promedio = media de anuncios, coherente con
+    # Mejor/Máximo y NO la media FX (que podía superar al Máximo).
+    _o_best = snap._ad_rate("PEN", "compra", _amt, "best")
+    _o_avg = snap._ad_rate("PEN", "compra", _amt, "average")
+    _o_max = snap._ad_rate("PEN", "compra", _amt, "max")
+    check(f"3d: origen “Promedio” = media de anuncios ({_o_avg:.4f}) ≠ media FX ({pen_media_c}) y Mejor ≤ Promedio ≤ Máximo",
+          abs(EXPA_O["originRate"] - _o_avg) < 1e-9 and _o_avg != pen_media_c
+          and _o_best <= _o_avg <= _o_max, f"avg={EXPA_O['originRate']} media={pen_media_c} best={_o_best} max={_o_max}")
+    page.click("#casos-esc-origin [data-sc-mode='average']")
+    page.wait_for_timeout(300)
+    check(f"3d: origen+destino “Promedio” → desglose {VAL_AVG_O}, dos etiquetas “Promedio de anuncios” y sin aviso de libro",
+          VAL_AVG_O in result_text(page)
+          and (panel_text(page).upper().count("PROMEDIO DE ANUNCIOS") == 2)
+          and "NO CUBRE EL MONTO" not in panel_text(page).upper()
+          and "SIN LIBRO" not in panel_text(page).upper(),
+          (result_text(page) + " | " + panel_text(page))[:350].replace("\n", " | "))
+    page.click("#casos-esc-origin [data-sc-mode='conservative']")
+    page.wait_for_timeout(300)
     page.click("#casos-esc-dest [data-sc-mode='conservative']")
     page.wait_for_timeout(300)
     check("3b: destino “2%” vuelve al conservador derivado", VAL_CONS in result_text(page) and "APLICADO (EL PAR TOCA VES)" in panel_text(page).upper())
