@@ -404,127 +404,142 @@
 
   // ==================== Motor de escenarios de tasa (panel) ====================
 
-  /* Busca la mejor tasa de un anuncio para fiat/side dado un amountUsd.
-   * Filtra: min <= amountUsd*price <= max  y  available >= amountUsd.
-   * mode='best' → compra = min(price), venta = max(price).
+  // ==================== Motor de escenarios de tasa (panel) ====================
+
+  /* BEST se evalúa a un monto de referencia fijo de 40 USD equivalentes (3e,
+   * decisión supervisada): min/price ≤ 40 ≤ max/price y available ≥ 40. La tasa
+   * BEST queda estable e independiente del monto del caso, igual para la matriz. */
+  var BEST_REF_USD = 40;
+
+  /* Anuncios ejecutables para un monto USD dado: min ≤ amt·price ≤ max y
+   * available ≥ amt. Mismo filtro para best(40)/average/min. */
+  function adsExecutable(origAds, amtUsd) {
+    var out = [];
+    for (var i = 0; i < origAds.length; i++) {
+      var a = origAds[i];
+      var price = num(a.price);
+      var avail = finitePositive(a.available);
+      var min = num(a.min);
+      var max = num(a.max);
+      if (price == null || avail == null) continue;
+      var cost = amtUsd * price;
+      if (min != null && cost < min) continue;
+      if (max != null && cost > max) continue;
+      if (avail < amtUsd) continue;
+      out.push(a);
+    }
+    return out;
+  }
+
+  /* Busca la tasa de un anuncio para fiat/side dado un amountUsd.
+   * Filtro ejecutable: min ≤ amountUsd·price ≤ max y available ≥ amountUsd.
+   * mode='best' → compra = min(price), venta = max(price) entre ejecutables
+   *   evaluados a BEST_REF_USD = 40 USD equivalentes (min/price ≤ 40 ≤ max/price);
+   *   monto del caso no afecta (decisión 3e).
    * mode='average' → media aritmética de los price de los anuncios ejecutables
-   *   (mismo filtro min/max/available); sin ejecutables → media FX de
+   *   (mismo filtro con el monto real del caso); sin ejecutables → media FX de
    *   unitsPerUsdCompra/Venta del fiat (fallback con source 'media(...)').
-   * mode='conservative' → compra = max(price), venta = min(price).
-   * mode='max' → mayor price entre los anuncios ejecutables (en cualquier lado);
-   *   mismo filtro min/max/available que best/conservative.
-   * Fallback: ads vacías → media FX; filtrado vacío → null.
-   * Devuelve {rate, ad, source, mode} o null si no hay ads y no hay fallback.
+   * mode='min' → menor price entre los ejecutables (monto real del caso).
+   * mode='max' → MÁXIMO por plataforma (3e): tercer anuncio de la lista por
+   *   defecto de cada plataforma (campo `platform`, Binance/Bybit); el MAX del
+   *   lado = mayor de los terceros. Sin cálculos extra: sin filtro min/max/
+   *   available; si una plataforma tiene <3 anuncios se usa su último y avisa
+   *   (warnings en el resultado). Libro vacío → media FX.
+   * Fallback: ads vacías → media FX; filtrado vacío → null (el panel cae a la media).
+   * Devuelve {rate, ad, source, mode, adsCount?, warnings?} o null.
    * `rate` es en unitsPerUsd (compra) o (venta).
-   * `ads` = array de {price, min, max, available, platform} o null (usa media FX).
-   */
+   * `ads` = array de {price, min, max, available, platform} o null (usa media FX). */
   function adRateAt(fx, fiat, side, amountUsd, mode, ads) {
     if (!fiat || !side || !amountUsd || !mode) return null;
     var origAds = Array.isArray(ads) ? ads : [];
-    var adsArr = [];
+    var amt = finitePositive(mode === 'best' ? BEST_REF_USD : num(amountUsd));
+    if (amt == null) return null;
+    var adsArr = adsExecutable(origAds, amt);
 
-    // Filtrar ads ejecutables para el monto dado
-    for (var _i = 0; _i < origAds.length; _i++) {
-      var a = origAds[_i];
-      var _price = num(a.price);
-      var _avail = finitePositive(a.available);
-      var _min = num(a.min);
-      var _max = num(a.max);
-      if (_price == null || _avail == null) continue;
-      var _cost = amountUsd * _price;
-      if (_min != null && _cost < _min) continue;
-      if (_max != null && _cost > _max) continue;
-      if (_avail < amountUsd) continue;
-      adsArr.push(a);
+    // Fallback a la media FX del snapshot (solo con libro vacío; con libro sin
+    // ejecutables el resultado es null y caseQuoteScenario cae a la media con aviso).
+    function mediaFx() {
+      var buyR = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[fiat];
+      var sellR = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[fiat];
+      var r = finitePositive(side === 'compra' ? buyR : sellR);
+      if (r == null) return null;
+      return { rate: r, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode, adsCount: 0 };
     }
 
     if (mode === 'best') {
-      if (Array.isArray(adsArr) && adsArr.length) {
-        var r = finitePositive(adsArr[0] && adsArr[0].price);
-        if (r == null) return null;
-        return { rate: r, ad: adsArr[0], source: 'ad_best_' + side, mode: mode };
-      }
-      // Si original era vacío → media FX; si se filtró todo → null
-      if (origAds.length === 0) {
-        var buyR = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[fiat];
-        var sellR = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[fiat];
-        if (side === 'compra') {
-          var rB = finitePositive(buyR);
-          if (rB == null) return null;
-          return { rate: rB, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
-        } else {
-          var rS = finitePositive(sellR);
-          if (rS == null) return null;
-          return { rate: rS, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
+      if (adsArr.length) {
+        var bestAd = null, bestRate = null;
+        for (var i = 0; i < adsArr.length; i++) {
+          var p = finitePositive(adsArr[i] && adsArr[i].price);
+          if (p == null) continue;
+          var better = bestAd == null || (side === 'compra' ? p < bestRate : p > bestRate);
+          if (better) { bestAd = adsArr[i]; bestRate = p; }
         }
+        if (bestAd != null) return { rate: bestRate, ad: bestAd, source: 'ad_best_' + side, mode: mode };
       }
+      if (origAds.length === 0) return mediaFx();
+      return null;
+    }
+
+    if (mode === 'min') {
+      // Mínimo: el menor price entre los ejecutables (monto real del caso).
+      if (adsArr.length) {
+        var minAd = null, minRate = null;
+        for (var j = 0; j < adsArr.length; j++) {
+          var pMin = finitePositive(adsArr[j] && adsArr[j].price);
+          if (pMin == null) continue;
+          if (minAd == null || pMin < minRate) { minAd = adsArr[j]; minRate = pMin; }
+        }
+        if (minAd != null) return { rate: minRate, ad: minAd, source: 'ad_min_' + side, mode: mode };
+      }
+      if (origAds.length === 0) return mediaFx();
       return null;
     }
 
     if (mode === 'max') {
-      // Máximo: mayor price entre los ejecutables (independiente del orden del libro:
-      // compra asc y venta desc dan la MISMA tasa si esa es la de mayor precio).
-      if (Array.isArray(adsArr) && adsArr.length) {
-        var maxAd = null;
-        for (var _j = 0; _j < adsArr.length; _j++) {
-          var _pMax = finitePositive(adsArr[_j] && adsArr[_j].price);
-          if (_pMax == null) continue;
-          if (maxAd == null || _pMax > finitePositive(maxAd.price)) maxAd = adsArr[_j];
-        }
-        if (maxAd != null) {
-          return { rate: finitePositive(maxAd.price), ad: maxAd, source: 'ad_max_' + side, mode: mode };
-        }
+      // Máximo (3e): tercer anuncio de la lista por defecto de cada plataforma
+      // (campo `platform`); el MAX del lado = mayor de los dos terceros. Sin
+      // filtro min/max/available ni cálculos extra. Plataforma con <3 anuncios:
+      // se usa su último y se avisa en `warnings`.
+      if (origAds.length === 0) return mediaFx();
+      var order = [], groups = {}, warnings = [];
+      for (var k = 0; k < origAds.length; k++) {
+        var aMax = origAds[k];
+        var plat = aMax && typeof aMax.platform === 'string' && aMax.platform ? aMax.platform : '(sin plataforma)';
+        if (!groups[plat]) { groups[plat] = []; order.push(plat); }
+        var pPlat = finitePositive(aMax && aMax.price);
+        if (pPlat != null) groups[plat].push({ price: pPlat, ad: aMax });
       }
-      // Libro vacío → media FX; todo filtrado → null (el panel cae a la media).
-      if (origAds.length === 0) {
-        var buyRX = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[fiat];
-        var sellRX = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[fiat];
-        if (side === 'compra') {
-          var rX = finitePositive(buyRX);
-          if (rX == null) return null;
-          return { rate: rX, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
-        } else {
-          var rY = finitePositive(sellRX);
-          if (rY == null) return null;
-          return { rate: rY, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
+      var maxAd = null, maxRate = null;
+      for (var gi = 0; gi < order.length; gi++) {
+        var list = groups[order[gi]];
+        if (!list.length) {
+          warnings.push('Máximo ' + fiat + '/' + side + ': plataforma ' + order[gi] + ' sin anuncios útiles; se excluye del Máximo.');
+          continue;
         }
-      }
-      return null;
-    }
-
-    if (mode === 'conservative') {
-      if (Array.isArray(adsArr) && adsArr.length) {
-        var r2 = finitePositive(adsArr[adsArr.length - 1] && adsArr[adsArr.length - 1].price);
-        if (r2 == null) return null;
-        return { rate: r2, ad: adsArr[adsArr.length - 1], source: 'ad_conservative_' + side, mode: mode };
-      }
-      if (origAds.length === 0) {
-        var buyR = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[fiat];
-        var sellR = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[fiat];
-        if (side === 'compra') {
-          var rC = finitePositive(buyR);
-          if (rC == null) return null;
-          return { rate: rC, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
-        } else {
-          var rD = finitePositive(sellR);
-          if (rD == null) return null;
-          return { rate: rD, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: mode };
+        var pick = list.length >= 3 ? list[2] : list[list.length - 1];
+        if (list.length < 3) {
+          warnings.push('Máximo ' + fiat + '/' + side + ': plataforma ' + order[gi] + ' con ' + list.length + ' anuncios (<3): se usa su último anuncio.');
         }
+        if (maxRate == null || pick.price > maxRate) { maxRate = pick.price; maxAd = pick.ad; }
       }
-      return null;
+      if (maxAd == null) return null;
+      var resMax = { rate: maxRate, ad: maxAd, source: 'ad_max_' + side, mode: mode };
+      if (warnings.length) resMax.warnings = warnings;
+      return resMax;
     }
 
     // average: media aritmética de los anuncios ejecutables (bug 3d: antes usaba
-    // la media FX y el Promedio podía superar al Máximo, p.ej. PEN 3,5376 > 3,485).
-    // Mismo filtro min/max/available que best/conservative/max; el promedio no es
-    // un anuncio único → ad=null y adsCount = nº de anuncios promediados.
+    // la media FX y el Promedio podía superar al Máximo). Mismo filtro min/max/
+    // available que best/min con el monto real del caso; el promedio no es un
+    // anuncio único → ad=null y adsCount = nº de anuncios promediados.
     if (mode === 'average') {
-      if (Array.isArray(adsArr) && adsArr.length) {
+      if (adsArr.length) {
         var sumA = 0, cntA = 0;
-        for (var _k = 0; _k < adsArr.length; _k++) {
-          var _pAvg = finitePositive(adsArr[_k] && adsArr[_k].price);
-          if (_pAvg == null) continue;
-          sumA += _pAvg;
+        for (var m = 0; m < adsArr.length; m++) {
+          var pAvg = finitePositive(adsArr[m] && adsArr[m].price);
+          if (pAvg == null) continue;
+          sumA += pAvg;
           cntA++;
         }
         if (cntA > 0) {
@@ -532,26 +547,25 @@
         }
       }
       // Fallback: media FX (sin anuncios o sin ejecutables → aviso “no cubre” en la UI).
-      var buyRA = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[fiat];
-      var sellRA = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[fiat];
-      var rAvg = finitePositive(side === 'compra' ? buyRA : sellRA);
-      if (rAvg == null) return null;
-      return { rate: rAvg, ad: null, source: 'media(' + fiat + '/' + side + ')', mode: 'average', adsCount: 0 };
+      return mediaFx();
     }
+
+    return null;
   }
 
-  /* Calcula los cuatro escenarios (best/average/conservative/max) para origen y destino.
+  /* Calcula los cuatro escenarios (max/best/average/min) para origen y destino.
    * Devuelve { best: { originRate, destRate, originAd, destAd }, average: {...},
-   * conservative: {...}, max: {...} }.
+   * min: {...}, max: {...} }.
    * `average` además propaga originSource/destSource ('ad_average_<side>' o
-   * 'media(<fiat>/<side>') y originAdsCount/destAdsCount; su originAd/destAd
+   * 'media(<fiat>/<side>)') y originAdsCount/destAdsCount; su originAd/destAd
    * es null (el promedio no es un anuncio único).
+   * `max` propaga los avisos de plataforma con <3 anuncios en `warnings`.
    * `pair` = ['A','B'], `direction` = 'AB' | 'BA'.
    * `rateMode` indica qué side usar (compra/venta).
-   * El 2% NO va aquí; es parámetro de cotización.
+   * El 2% VES ya no existe (3e): sin safety por modo en ningún lado.
    */
   function rateScenarios(settings, fx, pair, direction, amount, rateMode, adsPair) {
-    if (!pair || !direction || !rateMode) return { best: {}, average: {}, conservative: {}, max: {} };
+    if (!pair || !direction || !rateMode) return { best: {}, average: {}, min: {}, max: {} };
     var dir = direction === 'BA' ? 'BA' : 'AB';
     var curA = dir === 'AB' ? pair[0] : pair[1];
     var curB = dir === 'AB' ? pair[1] : pair[0];
@@ -560,7 +574,7 @@
     // `rateMode` se pasa solo para coherencia de API pero siempre es 'compra'.
     var originSide = 'compra';
     var destSide = 'venta';
-    var scenarios = { best: {}, average: {}, conservative: {}, max: {} };
+    var scenarios = { best: {}, average: {}, min: {}, max: {} };
 
     // Obtener ads desde fx.pairs si están disponibles
     var adsA, adsB;
@@ -593,7 +607,7 @@
       adsA = adsB = [];
     }
 
-    // best
+    // best (evaluado a 40 USD equivalentes: ver BEST_REF_USD en adRateAt)
     var aBestO = adRateAt(fx, curA, originSide, amount, 'best', adsA);
     var aBestD = adRateAt(fx, curB, destSide, amount, 'best', adsB);
     if (aBestO && aBestD) {
@@ -602,7 +616,7 @@
       scenarios.best.originAd = aBestO;
       scenarios.best.destAd = aBestD;
     }
-    // average
+    // average (media de anuncios ejecutables con el monto real)
     var aAvgO = adRateAt(fx, curA, originSide, amount, 'average', adsA);
     var aAvgD = adRateAt(fx, curB, destSide, amount, 'average', adsB);
     if (aAvgO && aAvgD) {
@@ -615,23 +629,31 @@
       scenarios.average.originAdsCount = aAvgO.adsCount;
       scenarios.average.destAdsCount = aAvgD.adsCount;
     }
-    // conservative
-    var aConsO = adRateAt(fx, curA, originSide, amount, 'conservative', adsA);
-    var aConsD = adRateAt(fx, curB, destSide, amount, 'conservative', adsB);
-    if (aConsO && aConsD) {
-      scenarios.conservative.originRate = aConsO.rate;
-      scenarios.conservative.destRate = aConsD.rate;
-      scenarios.conservative.originAd = aConsO;
-      scenarios.conservative.destAd = aConsD;
+    // min (menor price ejecutable con el monto real)
+    var aMinO = adRateAt(fx, curA, originSide, amount, 'min', adsA);
+    var aMinD = adRateAt(fx, curB, destSide, amount, 'min', adsB);
+    if (aMinO && aMinD) {
+      scenarios.min.originRate = aMinO.rate;
+      scenarios.min.destRate = aMinD.rate;
+      scenarios.min.originAd = aMinO;
+      scenarios.min.destAd = aMinD;
     }
-    // max (Máximo: mayor price ejecutable en cada lado)
+    // max (Máximo por plataforma: tercer anuncio, mayor de los dos terceros)
     var aMaxO = adRateAt(fx, curA, originSide, amount, 'max', adsA);
     var aMaxD = adRateAt(fx, curB, destSide, amount, 'max', adsB);
+    var maxWarn = [].concat((aMaxO && aMaxO.warnings) || [], (aMaxD && aMaxD.warnings) || []);
+    // Avisos por lado: rateInfo los expone solo si el modo activo de ese lado es
+    // max (caseQuoteScenario); el array unido `warnings` se mantiene para API/tests.
+    scenarios.max.originWarn = (aMaxO && aMaxO.warnings) ? aMaxO.warnings.slice() : [];
+    scenarios.max.destWarn = (aMaxD && aMaxD.warnings) ? aMaxD.warnings.slice() : [];
     if (aMaxO && aMaxD) {
       scenarios.max.originRate = aMaxO.rate;
       scenarios.max.destRate = aMaxD.rate;
       scenarios.max.originAd = aMaxO;
       scenarios.max.destAd = aMaxD;
+      if (maxWarn.length) scenarios.max.warnings = maxWarn;
+    } else if (maxWarn.length) {
+      scenarios.max.warnings = maxWarn;
     }
     return scenarios;
   }
@@ -654,22 +676,23 @@
 
   /* Cotización basada en escenarios del panel (motor de escenarios).
    * Nuevos parámetros en `req`:
-   *   originMode   – 'best'|'average'|'conservative'|'max' (default: 'best')
+   *   originMode   – 'max'|'best'|'average'|'min' (default: 'best')
    *   destMode     – igual (default: 'best')
-   *   vesSafetyPct – safety sobre tasa VES (default: 0.02). 0 = sin 2%.
-   *   destSafetyPct – safety sobre tasa destino (default: 0.02).
+   *   originManualRate – tasa manual origen; si llega (>0), esa es la base del lado.
+   *   destManualRate   – tasa manual destino; si llega (>0), esa es la base del lado.
    *   commissionPct – reemplaza settings.commissionDefault/COP (default: undefined).
    *   terceroOn    – true/false (default: settings.tercero > 0).
    *
-   * Fórmulas:
-   *   PEN→VES:  USDT = PEN / compra_PEN · (1-5%);  net = USDT·(1-5%);
-   *             destRate = venta_VES·(1-2%);  delivered = net·destRate.
-   *   VES→otro: rateVES = compra_VES·(1+2%);
-   *             USDT = VES/rateVES;  net = USDT·(1-5%);
-   *             destRate = venta_dest·(1-2%);  delivered = net·destRate.
-   *   2% configurable a 0; si VES no interviene, no aplica el 2% VES.
-   *   El destino no-VES en VES→otro lleva destSafetyPct (resta).
-   *   Profit al mercado (best venta) para exponer seguridad.
+   * Fórmulas (3e): SIN 2% VES — el safety por modo desapareció; la seguridad
+   * ahora es la tasa manual. Tasa base = escenario del sistema por modo;
+   * si hay tasa manual, esa manda y se calcula el factor de seguridad:
+   *   securityFactor = (sistema − manual) / sistema × 100  (por lado)
+   * Manual < sistema → factor positivo (descuento); manual > sistema → negativo
+   * (recargo visible). rateInfo guarda manual/factor/source por lado, y
+   * executeCase los lleva al movimiento (auditoría).
+   *
+   *   PEN→VES:  USDT = PEN / compra_PEN;  net = USDT·(1-5%);
+   *             delivered = net·venta_VES (manual si hay, si no sistema).
    */
   function caseQuoteScenario(settings, fx, req) {
     var pair = req && req.pair;
@@ -683,12 +706,8 @@
     // Parámetros con defaults
     var originMode = req.originMode || 'best';
     var destMode = req.destMode || 'best';
-    var vesSafetyPct = req.vesSafetyPct != null ? req.vesSafetyPct : 0.02;
-    var destSafetyPct = req.destSafetyPct != null ? req.destSafetyPct : 0.02;
-    // Máximo cotiza SIN 2% en ambos lados (el safety es del modo 2%): aunque
-    // llegue un pct o el default de 0.02, el modo 'max' lo anula.
-    if (originMode === 'max') vesSafetyPct = 0;
-    if (destMode === 'max') destSafetyPct = 0;
+    var originManual = finitePositive(req.originManualRate);
+    var destManual = finitePositive(req.destManualRate);
     var refAmount = req.referenceAmountUsd != null ? num(req.referenceAmountUsd) : 10;
     var useActual = !!req.useActualAmount;
     // Si deposit > 0, usar el monto real; si no, usar referenceAmountUsd (default 10)
@@ -699,13 +718,30 @@
     var terceroOn = req.terceroOn != null ? req.terceroOn : (settings.tercero > 0);
 
     // Bootstrap con media FX (sin filtro de ads) para derivar rates y amountUsd.
-    // La segunda pasada en [reversed] refinará con ads reales.
+    // La segunda pasada en [reversed/forward] refinará con ads reales.
     var rateOriginMedia = fx && fx.unitsPerUsdCompra && fx.unitsPerUsdCompra[origin] != null
       ? fx.unitsPerUsdCompra[origin] : null;
     var rateDestMedia = fx && fx.unitsPerUsdVenta && fx.unitsPerUsdVenta[dest] != null
       ? fx.unitsPerUsdVenta[dest] : null;
     if (!rateOriginMedia || !rateDestMedia) {
       return { ok: false, error: 'Sin tasas FX para las monedas del par.' };
+    }
+
+    // Tasa efectiva por lado: sistema (modo) o manual si el usuario la activó;
+    // factor de seguridad = (sistema − manual)/sistema × 100 (positivo = descuento).
+    var rateOrigin, rateDest, sysOrigin, sysDest, factorOrigin, factorDest;
+    function applyRates(sO, sD) {
+      sysOrigin = sO.originRate;
+      sysDest = sD.destRate;
+      rateOrigin = (originManual != null && sysOrigin > 0) ? originManual : sysOrigin;
+      rateDest = (destManual != null && sysDest > 0) ? destManual : sysDest;
+      factorOrigin = (originManual != null && sysOrigin > 0 && rateOrigin !== sysOrigin)
+        ? (sysOrigin - rateOrigin) / sysOrigin * 100 : 0;
+      factorDest = (destManual != null && sysDest > 0 && rateDest !== sysDest)
+        ? (sysDest - rateDest) / sysDest * 100 : 0;
+    }
+    function srcOf(scn, side, manual) {
+      return (manual != null) ? 'manual' : scenarioSource(scn, side);
     }
 
     // amountUsd: USD equivalente para rateScenarios (si depositVal es fiat origen, derivar USD).
@@ -731,24 +767,46 @@
       scenarios[om] = sOrig;
       scenarios[dm] = sDest;
     }
-
-    // Effective rates con safety PCT VES
-    var rateOrigin, rateDest;
-    var isVESOrigin = origin === 'VES';
-    var isVESDest = dest === 'VES';
-
-    // vesSafetyPct solo si VES interviene (origen o destino)
-    rateOrigin = isVESOrigin
-      ? sOrig.originRate * (1 + vesSafetyPct)
-      : sOrig.originRate;
-    // destSafetyPct solo si VES interviene (origen o destino)
-    rateDest = (isVESOrigin || isVESDest)
-      ? sDest.destRate * (1 - destSafetyPct)
-      : sDest.destRate;
+    applyRates(sOrig, sDest);
 
     var commPct = (commissionPct != null && (typeof commissionPct === 'number') && commissionPct >= 0) ? commissionPct : commissionFor(settings, origin);
     var reversed = !!req.reversed;
     var target = reversed ? num(req.target) : null;
+
+    function rateInfo(collect) {
+      return {
+        originScenarios: scenarios,
+        destScenarios: scenarios,
+        adUsed: originManual != null ? null : sOrig.originAd,
+        originSource: srcOf(sOrig, 'origin', originManual != null ? originManual : null),
+        destSource: srcOf(sDest, 'dest', destManual != null ? destManual : null),
+        originAdsCount: originManual != null ? null : scenarioAdsCount(sOrig, 'origin'),
+        destAdsCount: destManual != null ? null : scenarioAdsCount(sDest, 'dest'),
+        originSystemRate: sysOrigin, destSystemRate: sysDest,
+        originManualRate: originManual, destManualRate: destManual,
+        originSecurityFactor: originManual != null ? factorOrigin : null,
+        destSecurityFactor: destManual != null ? factorDest : null,
+        // Aviso de plataforma <3 (Máximo) solo cuando el modo activo del lado
+        // correspondiente es max; en Mejor/Promedio/Mínimo el aviso no aplica.
+        warnings: [].concat(
+          (om === 'max' && scenarios.max && scenarios.max.originWarn)
+            ? scenarios.max.originWarn.slice() : [],
+          (dm === 'max' && scenarios.max && scenarios.max.destWarn)
+            ? scenarios.max.destWarn.slice() : []
+        ),
+        originRate: rateOrigin, destRate: rateDest,
+        quotedRate: collect.quotedRate,
+        effectiveRate: collect.effectiveRate,
+        marketRate: collect.marketRate,
+        profitCommission: collect.profit,
+        profitSafety: collect.profitSafety
+      };
+    }
+
+    // marketRate: cross (dest/origen) del mejor escenario (siempre sistema)
+    var mBest = scenarios.best;
+    var marketRate = (mBest && mBest.destRate && mBest.originRate)
+      ? mBest.destRate / mBest.originRate : rateDest;
 
     if (reversed && target != null && target > 0) {
       // INVERSO: target fijado — primera pasada (con depositVal = referenceAmountUsd)
@@ -762,12 +820,7 @@
       if (sO2.originRate && sD2.destRate) {
         scenarios = sc2;
         sOrig = sO2; sDest = sD2;
-        rateOrigin = isVESOrigin
-          ? sOrig.originRate * (1 + vesSafetyPct)
-          : sOrig.originRate;
-        rateDest = (isVESOrigin || isVESDest)
-          ? sDest.destRate * (1 - destSafetyPct)
-          : sDest.destRate;
+        applyRates(sOrig, sDest);
       }
       var grossUsd = (target / rateDest) / (1 - commPct);
       var deposit = round2(grossUsd * rateOrigin);
@@ -777,12 +830,7 @@
       var base = Math.max(profit, 0);
       var diezmo = round2(base * settings.diezmo);
       var tercero = terceroOn ? round2(base * settings.tercero) : 0;
-
-      // marketRate: cross (dest/origen) del mejor escenario
-      var mBest = scenarios.best;
-      var marketRate = (mBest && mBest.destRate && mBest.originRate)
-        ? mBest.destRate / mBest.originRate : rateDest;
-      var quotedRate = round2(rateDest / rateOrigin);
+      var quotedRateRev = round2(rateDest / rateOrigin);
 
       return {
         ok: true, kind: 'scenario', pair: pair.slice(), direction: dir,
@@ -794,86 +842,58 @@
         neto: round2(profit - diezmo - tercero),
         scenario: {
           originMode: originMode, destMode: destMode,
-          vesSafetyPct: vesSafetyPct, destSafetyPct: destSafetyPct
+          originManualRate: originManual, destManualRate: destManual
         },
-        rateInfo: {
-          originScenarios: scenarios,
-          destScenarios: scenarios,
-          adUsed: sOrig.originAd,
-          originSource: scenarioSource(sOrig, 'origin'),
-          destSource: scenarioSource(sDest, 'dest'),
-          originAdsCount: scenarioAdsCount(sOrig, 'origin'),
-          destAdsCount: scenarioAdsCount(sDest, 'dest'),
-          originRate: rateOrigin, destRate: rateDest,
-          quotedRate: quotedRate,
+        rateInfo: rateInfo({
+          quotedRate: quotedRateRev,
           effectiveRate: round2(delivered / deposit),
           marketRate: marketRate,
-          profitCommission: profit,
-          profitSafety: round2(deposit * (marketRate - quotedRate)),
-          safetyPct: (isVESOrigin ? vesSafetyPct : 0) + (isVESDest || isVESOrigin ? destSafetyPct : 0)
-        }
+          profit: profit,
+          profitSafety: round2(deposit * (marketRate - quotedRateRev))
+        })
       };
     }
 
     // FORWARD: deposit dado — segunda pasada con monto en USD (amountUsd)
     if (!depositVal || depositVal <= 0) return { ok: false, error: 'Monto inválido.' };
-    var amountUsd2 = depositVal / rateOrigin;
-    var sc2 = rateScenarios(settings, fx, pair, dir, amountUsd2, 'compra');
-    var sO2 = sc2[om] || sc2['best'] || {}, sD2 = sc2[dm] || sc2['best'] || {};
-    if (sO2.originRate && sD2.destRate) {
-      scenarios = sc2;
-      sOrig = sO2; sDest = sD2;
-      rateOrigin = isVESOrigin
-        ? sOrig.originRate * (1 + vesSafetyPct)
-        : sOrig.originRate;
-      rateDest = (isVESOrigin || isVESDest)
-        ? sDest.destRate * (1 - destSafetyPct)
-        : sDest.destRate;
+    var amountUsd3 = depositVal / rateOrigin;
+    var sc3 = rateScenarios(settings, fx, pair, dir, amountUsd3, 'compra');
+    var sO3 = sc3[om] || sc3['best'] || {}, sD3 = sc3[dm] || sc3['best'] || {};
+    if (sO3.originRate && sD3.destRate) {
+      scenarios = sc3;
+      sOrig = sO3; sDest = sD3;
+      applyRates(sOrig, sDest);
     }
-    var grossUsd = depositVal / rateOrigin;
-    var netUsd = grossUsd * (1 - commPct);
-    var delivered = round2(netUsd * rateDest);
-    if (!(delivered > 0)) return { ok: false, error: 'Monto demasiado bajo.' };
-    var profit = round2(grossUsd - netUsd);
-    var base = Math.max(profit, 0);
-    var diezmo = round2(base * settings.diezmo);
-    var tercero = terceroOn ? round2(base * settings.tercero) : 0;
-
-    // marketRate: cross (dest/origen) del mejor escenario
-    var mBest = scenarios.best;
-    var marketRate = (mBest && mBest.destRate && mBest.originRate)
-      ? mBest.destRate / mBest.originRate : rateDest;
-    var quotedRate = round2(rateDest / rateOrigin);
+    var grossUsdF = depositVal / rateOrigin;
+    var netUsdF = grossUsdF * (1 - commPct);
+    var deliveredF = round2(netUsdF * rateDest);
+    if (!(deliveredF > 0)) return { ok: false, error: 'Monto demasiado bajo.' };
+    var profitF = round2(grossUsdF - netUsdF);
+    var baseF = Math.max(profitF, 0);
+    var diezmoF = round2(baseF * settings.diezmo);
+    var terceroF = terceroOn ? round2(baseF * settings.tercero) : 0;
+    var quotedRateF = round2(rateDest / rateOrigin);
 
     return {
       ok: true, kind: 'scenario', pair: pair.slice(), direction: dir,
       currencyIn: origin, currencyOut: dest,
-      deposit: depositVal, delivered: delivered, grossUsd: grossUsd,
+      deposit: depositVal, delivered: deliveredF, grossUsd: grossUsdF,
       commission: commPct, commissionPct: round2(commPct * 100),
       overridden: false, reversed: false, referencial: (origin === 'EUR' || dest === 'EUR'),
-      grossProfit: profit, profitUsd: profit, base: base, diezmo: diezmo, tercero: tercero,
-      neto: round2(profit - diezmo - tercero),
+      grossProfit: profitF, profitUsd: profitF, base: baseF, diezmo: diezmoF, tercero: terceroF,
+      neto: round2(profitF - diezmoF - terceroF),
       scenario: {
         originMode: originMode, destMode: destMode,
-        vesSafetyPct: vesSafetyPct, destSafetyPct: destSafetyPct,
+        originManualRate: originManual, destManualRate: destManual,
         referenceAmountUsd: refAmount, useActualAmount: useActual
       },
-      rateInfo: {
-        originScenarios: scenarios,
-        destScenarios: scenarios,
-        adUsed: sOrig.originAd,
-        originSource: scenarioSource(sOrig, 'origin'),
-        destSource: scenarioSource(sDest, 'dest'),
-        originAdsCount: scenarioAdsCount(sOrig, 'origin'),
-        destAdsCount: scenarioAdsCount(sDest, 'dest'),
-        originRate: rateOrigin, destRate: rateDest,
-        quotedRate: quotedRate,
-        effectiveRate: round2(delivered / depositVal),
+      rateInfo: rateInfo({
+        quotedRate: quotedRateF,
+        effectiveRate: round2(deliveredF / depositVal),
         marketRate: marketRate,
-        profitCommission: profit,
-        profitSafety: round2(depositVal * (marketRate - quotedRate)),
-        safetyPct: (isVESOrigin ? vesSafetyPct : 0) + (isVESDest || isVESOrigin ? destSafetyPct : 0)
-      }
+        profit: profitF,
+        profitSafety: round2(depositVal * (marketRate - quotedRateF))
+      })
     };
   }
 
@@ -1055,13 +1075,19 @@
       // los montos in/out; nunca se re-cotiza con caseQuote).
       caseMeta.originMode = q.scenario.originMode;
       caseMeta.destMode = q.scenario.destMode;
-      caseMeta.vesSafetyPct = q.scenario.vesSafetyPct;
-      caseMeta.destSafetyPct = q.scenario.destSafetyPct;
+      // 3e: la seguridad es la tasa manual (factor de seguridad por lado);
+      // el 2% por modo ya no existe. rateInfo guarda manual/factor/source.
+      caseMeta.originManualRate = q.scenario.originManualRate;
+      caseMeta.destManualRate = q.scenario.destManualRate;
       caseMeta.effectiveRate = q.rateInfo.effectiveRate;
       caseMeta.rateInfo = {
         originRate: q.rateInfo.originRate, destRate: q.rateInfo.destRate,
         quotedRate: q.rateInfo.quotedRate, effectiveRate: q.rateInfo.effectiveRate,
-        marketRate: q.rateInfo.marketRate, safetyPct: q.rateInfo.safetyPct,
+        marketRate: q.rateInfo.marketRate,
+        originSource: q.rateInfo.originSource, destSource: q.rateInfo.destSource,
+        originSystemRate: q.rateInfo.originSystemRate, destSystemRate: q.rateInfo.destSystemRate,
+        originManualRate: q.rateInfo.originManualRate, destManualRate: q.rateInfo.destManualRate,
+        originSecurityFactor: q.rateInfo.originSecurityFactor, destSecurityFactor: q.rateInfo.destSecurityFactor,
         adUsed: q.rateInfo.adUsed
       };
     }

@@ -410,58 +410,90 @@ check('par personalizado VES/EUR cotiza (referencial)', qCustom.ok && qCustom.re
 
 /* ==================== TAREA 3a: Motor de escenarios de tasa (panel) ==================== */
 
-console.log('\n[14] adRateAt — best/average/conservative con ads inline');
-// Fixture de ads para pruebas: compra asc, venta desc
+console.log('\n[14] adRateAt — max/best/average/min (3e) con ads inline');
+// Fixture de ads para pruebas: compra asc, venta desc, con plataforma (Binance/Bybit)
 var adsCompraInline = [
-  { price: 3.50, min: 5, max: 500, available: 50 },
-  { price: 3.60, min: 10, max: 2000, available: 200 },
-  { price: 3.75, min: 15, max: 5000, available: 500 }
+  { price: 3.50, min: 5, max: 500, available: 50, platform: 'binance' },
+  { price: 3.60, min: 10, max: 2000, available: 200, platform: 'binance' },
+  { price: 3.75, min: 15, max: 5000, available: 500, platform: 'binance' },
+  { price: 3.52, min: 8, max: 8000, available: 800, platform: 'bybit' },
+  { price: 3.55, min: 8, max: 8000, available: 800, platform: 'bybit' },
+  { price: 3.65, min: 8, max: 8000, available: 800, platform: 'bybit' }
 ];
 var adsVentaInline = [
-  { price: 3.90, min: 10, max: 3000, available: 300 },
-  { price: 3.80, min: 5, max: 2000, available: 200 },
-  { price: 3.70, min: 8, max: 5000, available: 500 }
+  { price: 3.90, min: 10, max: 3000, available: 300, platform: 'binance' },
+  { price: 3.80, min: 5, max: 2000, available: 200, platform: 'binance' },
+  { price: 3.70, min: 8, max: 5000, available: 500, platform: 'binance' },
+  { price: 3.88, min: 8, max: 8000, available: 800, platform: 'bybit' },
+  { price: 3.86, min: 8, max: 8000, available: 800, platform: 'bybit' },
+  { price: 3.84, min: 8, max: 8000, available: 800, platform: 'bybit' }
 ];
 
-// best compra = min(price) = 3.50
+// best (3e): mejor precio evaluado a 40 USD equivalentes (min en compra / max en venta)
 var arB = engine.adRateAt(FX, 'PEN', 'compra', 10, 'best', adsCompraInline);
 check('adRateAt best compra: rate = 3.50 (min price)', arB.rate === 3.50);
 check('adRateAt best compra: source ad_best_compra', arB.source === 'ad_best_compra');
 check('adRateAt best compra: ad price 3.50', arB.ad && arB.ad.price === 3.50);
-// best venta = max(price) = 3.90
 var arV = engine.adRateAt(FX, 'PEN', 'venta', 10, 'best', adsVentaInline);
 check('adRateAt best venta: rate = 3.90 (max price)', arV.rate === 3.90);
 check('adRateAt best venta: source ad_best_venta', arV.source === 'ad_best_venta');
 
-// conservative compra = max(price) = 3.75
-var arBC = engine.adRateAt(FX, 'PEN', 'compra', 10, 'conservative', adsCompraInline);
-check('adRateAt conservative compra: rate = 3.75 (max price)', arBC.rate === 3.75);
-check('adRateAt conservative compra: source ad_conservative_compra', arBC.source === 'ad_conservative_compra');
-// conservative venta = min(price) = 3.70
-var arVC = engine.adRateAt(FX, 'PEN', 'venta', 10, 'conservative', adsVentaInline);
-check('adRateAt conservative venta: rate = 3.70 (min price)', arVC.rate === 3.70);
-check('adRateAt conservative venta: source ad_conservative_venta', arVC.source === 'ad_conservative_venta');
+// 3e: BEST usa un monto de referencia FIJO de 40 USD equivalentes (min/price…max/price):
+// un ad con min 100 es ejecutable a 40 USD (40×3.60 = 144 ≥ 100) aunque a 10 no lo sería.
+check('adRateAt best: min 100 sigue fuera a 10 USD pero entra a 40 USD (decisión 3e)',
+  engine.adRateAt(FX, 'PEN', 'compra', 10, 'best', [{ price: 3.60, min: 100, max: 500000, available: 5000 }]) == null ||
+  engine.adRateAt(FX, 'PEN', 'compra', 10, 'best', [{ price: 3.60, min: 100, max: 500000, available: 5000 }]).rate === 3.60);
+var arB40 = engine.adRateAt(FX, 'PEN', 'compra', 10, 'best', [{ price: 3.60, min: 100, max: 500000, available: 5000 }]);
+check('adRateAt best: monto fijo 40 USD eq → min 100 es ejecutable (rate 3.60)', arB40 != null && arB40.rate === 3.60);
+check('adRateAt best: min 200 fuera incluso a 40 USD (40×3.60 = 144 < 200)',
+  engine.adRateAt(FX, 'PEN', 'compra', 10, 'best', [{ price: 3.60, min: 200, max: 500000, available: 5000 }]) === null);
 
-// average = media aritmética de los anuncios ejecutables (bug 3d: ya NO media FX)
+// average: media aritmética de los anuncios ejecutables con el MONTO REAL (bug 3d: ya NO media FX)
 var arA = engine.adRateAt(FX, 'PEN', 'compra', 10, 'average', adsCompraInline);
-check('adRateAt average: rate = media de prices (3.50+3.60+3.75)/3', typeof arA.rate === 'number' && Math.abs(arA.rate - (3.50 + 3.60 + 3.75) / 3) < 1e-9);
+check('adRateAt average: rate = media de prices (3.9283… con 6 anuncios ejecutables a 10 USD)',
+  typeof arA.rate === 'number' && Math.abs(arA.rate - (3.50 + 3.60 + 3.75 + 3.52 + 3.55 + 3.65) / 6) < 1e-9);
 check('adRateAt average: source ad_average_compra', arA.source === 'ad_average_compra');
-check('adRateAt average: ad null (no es un anuncio único) y adsCount 3', arA.ad === null && arA.adsCount === 3);
-// bug 3d: el promedio de anuncios NO es la media FX (3.5)
+check('adRateAt average: ad null (no es un anuncio único) y adsCount 6', arA.ad === null && arA.adsCount === 6);
 check('adRateAt average: NO es la media FX 3.5', arA.rate !== 3.5);
-var arAv = engine.adRateAt(FX, 'PEN', 'venta', 10, 'average', adsVentaInline);
-check('adRateAt average venta: media de prices = 3.80 y source ad_average_venta',
-  Math.abs(arAv.rate - 3.80) < 1e-9 && arAv.source === 'ad_average_venta' && arAv.adsCount === 3);
-// average debe estar entre best y conservative
-check('adRateAt average: mejor ≤ average ≤ conservative', arB.rate <= arA.rate && arA.rate <= arBC.rate);
 
-// P1-1: filtro de ads por min/max/available
-check('adRateAt best: excluye ad si cost < min', engine.adRateAt(FX, 'PEN', 'compra', 10, 'best', [{ price: 3.60, min: 50, max: 500, available: 100 }]) == null);
-check('adRateAt best: excluye ad si cost > max', engine.adRateAt(FX, 'PEN', 'compra', 10, 'best', [{ price: 3.60, min: 1, max: 30, available: 100 }]) == null);
-check('adRateAt best: excluye ad si available < amount', engine.adRateAt(FX, 'PEN', 'compra', 100, 'best', [{ price: 3.60, min: 1, max: 500, available: 10 }]) == null);
-// ad ejecutable pasa el filtro
-check('adRateAt best: ad con cost=36 dentro [10,50] y available=200 es ejecutable',
-  engine.adRateAt(FX, 'PEN', 'compra', 10, 'best', [{ price: 3.60, min: 10, max: 50, available: 200 }]) != null);
+// min: el menor price ejecutable (monto real)
+var arMin = engine.adRateAt(FX, 'PEN', 'compra', 10, 'min', adsCompraInline);
+check('adRateAt min compra: rate = 3.50 (menor price)', arMin.rate === 3.50);
+check('adRateAt min compra: source ad_min_compra', arMin.source === 'ad_min_compra');
+var arMinV = engine.adRateAt(FX, 'PEN', 'venta', 10, 'min', adsVentaInline);
+check('adRateAt min venta: rate = 3.70 (menor price de la lista desc)', arMinV.rate === 3.70);
+check('adRateAt min venta: source ad_min_venta y ad price 3.70', arMinV.source === 'ad_min_venta' && arMinV.ad && arMinV.ad.price === 3.70);
+
+// max (3e): tercer anuncio de la lista por defecto de cada plataforma; mayor de los dos terceros
+var arMaxC = engine.adRateAt(FX, 'PEN', 'compra', 10, 'max', adsCompraInline);
+check('adRateAt max compra: tercer Binance = 3.75 vs tercer Bybit = 3.65 → 3.75 (mayor)', arMaxC.rate === 3.75);
+check('adRateAt max compra: source ad_max_compra y ad.price 3.75', arMaxC.source === 'ad_max_compra' && arMaxC.ad && arMaxC.ad.price === 3.75 && arMaxC.mode === 'max');
+var arMaxV = engine.adRateAt(FX, 'PEN', 'venta', 10, 'max', adsVentaInline);
+check('adRateAt max venta: tercer Binance = 3.70 vs tercer Bybit = 3.84 → 3.84 (mayor)', arMaxV.rate === 3.84);
+check('adRateAt max venta: source ad_max_venta', arMaxV.source === 'ad_max_venta');
+check('adRateAt max: sin avisos cuando cada plataforma tiene ≥3 anuncios',
+  (!arMaxC.warnings || arMaxC.warnings.length === 0) && (!arMaxV.warnings || arMaxV.warnings.length === 0));
+// plataforma con <3 anuncios: usa su último y avisa
+var arMax2 = engine.adRateAt(FX, 'PEN', 'compra', 10, 'max', [
+  { price: 3.90, min: 5, max: 5000, available: 500, platform: 'binance' },
+  { price: 3.55, min: 5, max: 5000, available: 500, platform: 'binance' },
+  { price: 3.52, min: 8, max: 8000, available: 800, platform: 'bybit' },
+  { price: 3.55, min: 8, max: 8000, available: 800, platform: 'bybit' },
+  { price: 3.65, min: 8, max: 8000, available: 800, platform: 'bybit' }
+]);
+check('adRateAt max compra: Binance con 2 anuncios → usa su último (3.55) y Bybit 3.65 → 3.65',
+  arMax2.rate === 3.65 && arMax2.ad && arMax2.ad.price === 3.65);
+check('adRateAt max compra: aviso por plataforma con <3 anuncios',
+  Array.isArray(arMax2.warnings) && arMax2.warnings.length === 1 && /binance/.test(arMax2.warnings[0]) && /ltimo/.test(arMax2.warnings[0]));
+
+// P1-1: filtro de ads por min/max/available con el monto real (average/min)
+check('adRateAt min: excluye ad si cost < min (los no ejecutables → null)', engine.adRateAt(FX, 'PEN', 'compra', 10, 'min', [{ price: 3.60, min: 50, max: 500, available: 100 }]) == null);
+check('adRateAt average: sin ejecutables pero con libro → fallback media FX (comportamiento bug 3d)',
+  Math.abs(engine.adRateAt(FX, 'PEN', 'compra', 10, 'average', [{ price: 3.60, min: 50, max: 500, available: 100 }]).rate - 3.5) < 1e-9);
+check('adRateAt min: excluye ad si cost > max', engine.adRateAt(FX, 'PEN', 'compra', 10, 'min', [{ price: 3.60, min: 1, max: 30, available: 100 }]) == null);
+check('adRateAt min: excluye ad si available < amount', engine.adRateAt(FX, 'PEN', 'compra', 100, 'min', [{ price: 3.60, min: 1, max: 500, available: 10 }]) == null);
+check('adRateAt min: ad con cost=36 dentro [10,50] y available=200 es ejecutable',
+  engine.adRateAt(FX, 'PEN', 'compra', 10, 'min', [{ price: 3.60, min: 10, max: 50, available: 200 }]) != null);
 
 // Fallback a media FX cuando NO hay anuncios ejecutables (ads vacías o filtradas)
 var adsThick = [{ price: 3.30, min: 25, max: 5000, available: 100 }];
@@ -471,489 +503,430 @@ check('adRateAt average: media de anuncios EJECUTABLES (3.30), no media FX', arF
 var arFb = engine.adRateAt(FX, 'PEN', 'compra', 10, 'average', [{ price: 3.30, min: 50, max: 5000, available: 100 }]);
 check('adRateAt average: sin ejecutables → fallback media FX (3.5, media(PEN/compra), adsCount 0)',
   arFb != null && arFb.rate === 3.5 && arFb.source === 'media(PEN/compra)' && arFb.adsCount === 0 && arFb.ad === null);
-// ads vacías → fallback a media FX (también en average)
-var arAvgM = engine.adRateAt(FX, 'VES', 'compra', 10, 'average', []);
-check('adRateAt average ads vacías: fallback media FX compra (1000, media(VES/compra))',
-  arAvgM.rate === 1000 && arAvgM.source === 'media(VES/compra)' && arAvgM.adsCount === 0);
-// ads vacías → fallback a media FX
-var arM = engine.adRateAt(FX, 'VES', 'compra', 10, 'best', []);
-check('adRateAt ads vacías: fallback a media FX compra', arM.rate === 1000);
-var arMv = engine.adRateAt(FX, 'VES', 'venta', 10, 'best', []);
-check('adRateAt ads vacías: fallback a media FX venta', arMv.rate === 1100);
+// ads vacías → fallback a media FX (en los cuatro modos)
+check('adRateAt average ads vacías: fallback media FX compra (1000)', engine.adRateAt(FX, 'VES', 'compra', 10, 'average', []).rate === 1000);
+check('adRateAt best ads vacías: fallback media FX compra', engine.adRateAt(FX, 'VES', 'compra', 10, 'best', []).rate === 1000);
+check('adRateAt min ads vacías: fallback media FX venta', engine.adRateAt(FX, 'VES', 'venta', 10, 'min', []).rate === 1100);
+check('adRateAt max ads vacías: fallback media FX compra', engine.adRateAt(FX, 'VES', 'compra', 10, 'max', []).rate === 1000);
 // Fiat no existente → null
 check('adRateAt fiat sin tasa: null', engine.adRateAt(FX, 'XXX', 'compra', 10, 'best', []) === null);
 
-console.log('\n[14b] rateScenarios — devuelve los 3 por lado');
+console.log('\n[14b] rateScenarios — devuelve los 4 por lado (max/best/average/min, 3e)');
 var scenarios = engine.rateScenarios(S, FX, ['VES', 'PEN'], 'BA', 10, 'compra');
 check('rateScenarios: best existe', scenarios.best && scenarios.best.originRate && scenarios.best.destRate);
 check('rateScenarios: average existe', scenarios.average && scenarios.average.originRate && scenarios.average.destRate);
-check('rateScenarios: conservative existe', scenarios.conservative && scenarios.conservative.originRate && scenarios.conservative.destRate);
-// best ≤ average ≤ conservative para origen (compra)
-var sOrig = scenarios;
-check('origen: best ≤ average ≤ conservative',
-  sOrig.best.originRate <= sOrig.average.originRate && sOrig.average.originRate <= sOrig.conservative.originRate);
-// Para destino (venta): best ≥ average ≥ conservative
-check('destino: best ≥ average ≥ conservative',
-  sOrig.best.destRate >= sOrig.average.destRate && sOrig.average.destRate >= sOrig.conservative.destRate);
+check('rateScenarios: min existe', scenarios.min && scenarios.min.originRate && scenarios.min.destRate);
+check('rateScenarios: max existe', scenarios.max && scenarios.max.originRate && scenarios.max.destRate);
+check('rateScenarios: el escenario 2% (conservative) ya no existe (3e)', scenarios.conservative === undefined);
+check('rateScenarios sin ads: best = average = min = max = media FX',
+  scenarios.best.originRate === scenarios.average.originRate && scenarios.average.originRate === scenarios.min.originRate &&
+  scenarios.min.originRate === scenarios.max.originRate && scenarios.best.destRate === scenarios.max.destRate);
 // con ads inline
 var fxAds = engine.buildFx({
   fixture: true,
   pairs: { VES: { compra: 1000, venta: 1100 } },
   eurRef: { fixture: true, source: 'frankfurter', usdToEur: 0.9 }
 });
-// ads explícitos para rateScenarios
-// adsPair: { currency: { side: [ads] } } — side = 'compra' o 'venta'
+// ads explícitos para rateScenarios: { currency: { side: [ads] } } — side = compra/venta
 var scAds = engine.rateScenarios(S, fxAds, ['VES', 'PEN'], 'BA', 10, 'compra', {
   PEN: { compra: adsCompraInline, venta: adsVentaInline },  // origin usa compra, dest usa venta
   VES: { compra: [], venta: [] }                            // sin ads → media FX
 });
 // Para BA: origin = PEN (compra), dest = VES (venta)
-// PEN tiene ads: compra asc [3.50, 3.60, 3.75], VES no tiene ads → media FX=1100
-check('rateScenarios con ads: best originRate (PEN compra best) = 3.50', scAds.best.originRate === 3.50);
+check('rateScenarios con ads: best originRate (PEN compra min) = 3.50', scAds.best.originRate === 3.50);
 check('rateScenarios con ads: best destRate (VES venta media) = 1100', scAds.best.destRate === 1100);
-check('rateScenarios con ads: conservative originRate (PEN compra worst) = 3.75',
-  scAds.conservative.originRate === 3.75);
-check('rateScenarios con ads: conservative destRate (VES venta media) = 1100',
-  scAds.conservative.destRate === 1100);
-// 3c: el cuarto escenario max existe y usa el mayor price ejecutable por lado
-check('rateScenarios: max existe', scenarios.max && scenarios.max.originRate && scenarios.max.destRate);
-check('rateScenarios max (con ads): originRate (PEN compra mayor ejecutable) = 3.75', scAds.max.originRate === 3.75);
-check('rateScenarios max (con ads): destRate (VES venta media, sin ads) = 1100', scAds.max.destRate === 1100);
-check('rateScenarios max: conserva conservative VES intacto (venta media 1100)',
-  scAds.conservative.destRate === 1100 && scAds.conservative.originRate === 3.75);
-// 3d: average usa la media de los anuncios y propaga source/adsCount (adUsed null)
-check('rateScenarios con ads: average originRate = media de anuncios (3.6166…), no media FX 3.5',
-  Math.abs(scAds.average.originRate - (3.50 + 3.60 + 3.75) / 3) < 1e-9 && scAds.average.originRate !== 3.5);
+check('rateScenarios con ads: max originRate (mayor de los terceros por plataforma) = 3.75',
+  scAds.max.originRate === 3.75);
+check('rateScenarios con ads: max destRate (VES sin ads) = media 1100', scAds.max.destRate === 1100);
+// average usa la media de los anuncios y propaga source/adsCount (adUsed null)
+check('rateScenarios con ads: average originRate = media de los 6 anuncios (3.595), no media FX 3.5',
+  Math.abs(scAds.average.originRate - (3.50 + 3.60 + 3.75 + 3.52 + 3.55 + 3.65) / 6) < 1e-9 && scAds.average.originRate !== 3.5);
 check('rateScenarios con ads: average destRate (VES sin ads) = media FX 1100', scAds.average.destRate === 1100);
 check('rateScenarios con ads: average propaga originSource/destSource, adsCount y originAd/destAd null',
   scAds.average.originSource === 'ad_average_compra' && scAds.average.destSource === 'media(VES/venta)' &&
-  scAds.average.originAdsCount === 3 && scAds.average.destAdsCount === 0 &&
+  scAds.average.originAdsCount === 6 && scAds.average.destAdsCount === 0 &&
   scAds.average.originAd == null && scAds.average.destAd == null);
-check('rateScenarios con ads: best ≤ average ≤ max (coherencia bug 3d en compra)',
-  scAds.best.originRate <= scAds.average.originRate && scAds.average.originRate <= scAds.max.originRate);
+check('rateScenarios con ads: min originRate = 3.50 y min ≤ best ≤ … ≤ max en compra',
+  scAds.min.originRate === 3.50 && scAds.min.originRate <= scAds.best.originRate && scAds.best.originRate <= scAds.max.originRate);
 
-console.log('\n[14c] Escenario Máximo (3c) — pares SIN VES: mayor price ejecutable, sin 2%');
-// max compra (lista asc) = mayor price = 3.75 (no el primero)
-var arMaxC = engine.adRateAt(FX, 'PEN', 'compra', 10, 'max', adsCompraInline);
-check('adRateAt max compra: rate = 3.75 (mayor price)', arMaxC.rate === 3.75);
-check('adRateAt max compra: source ad_max_compra', arMaxC.source === 'ad_max_compra');
-check('adRateAt max compra: ad.price = 3.75', arMaxC.ad && arMaxC.ad.price === 3.75 && arMaxC.mode === 'max');
-// max venta (lista desc) = mayor price = 3.90 (no el último)
-var arMaxV = engine.adRateAt(FX, 'PEN', 'venta', 10, 'max', adsVentaInline);
-check('adRateAt max venta: rate = 3.90 (mayor price)', arMaxV.rate === 3.90);
-check('adRateAt max venta: source ad_max_venta', arMaxV.source === 'ad_max_venta');
-// max respeta el filtro: la ad de mayor precio SI es ejecutable salta a la siguiente
-var arMaxF = engine.adRateAt(FX, 'PEN', 'compra', 10, 'max', [
-  { price: 3.90, min: 50, max: 500, available: 100 },  // cost 39 > max 500? no: 10*3.9=39 < min 50 → filtrada
-  { price: 3.60, min: 5, max: 500, available: 100 }
-]);
-check('adRateAt max compra: filtrada la mayor (cost<min) → 3.60', arMaxF.rate === 3.60);
-// ads vacías → media FX (igual que best/conservative)
-var arMaxM = engine.adRateAt(FX, 'VES', 'compra', 10, 'max', []);
-check('adRateAt max ads vacías: fallback a media FX compra', arMaxM.rate === 1000);
-// PEN→COP real (AB, sin VES): Máximo compra = mayor, Máximo venta = mayor, safety 0
+console.log('\n[14c] Máximo por plataforma (3e): tercer anuncio, mayor de los dos terceros');
+var scAdsMax2 = engine.rateScenarios(S, fxAds, ['VES', 'PEN'], 'BA', 10, 'compra', {
+  PEN: {
+    compra: [
+      { price: 3.90, min: 5, max: 5000, available: 500, platform: 'binance' },
+      { price: 3.55, min: 5, max: 5000, available: 500, platform: 'binance' },
+      { price: 3.52, min: 8, max: 8000, available: 800, platform: 'bybit' },
+      { price: 3.55, min: 8, max: 8000, available: 800, platform: 'bybit' },
+      { price: 3.65, min: 8, max: 8000, available: 800, platform: 'bybit' }
+    ], venta: []
+  }, VES: { compra: [], venta: [] }
+});
+check('rateScenarios max: Binance con <3 → su último (3.55); Bybit tercero 3.65 → max 3.65 con aviso',
+  scAdsMax2.max.originRate === 3.65 && Array.isArray(scAdsMax2.max.warnings) && scAdsMax2.max.warnings.length === 1 &&
+  /binance/.test(scAdsMax2.max.warnings[0]), JSON.stringify(scAdsMax2.max));
+check('rateScenarios max: best/average/min no traen warnings de plataforma',
+  scAdsMax2.best.warnings === undefined && scAdsMax2.min.warnings === undefined);
+
+console.log('\n[14d] caseQuoteScenario PEN→COP (3e): matriz max/best/average/min sin 2%');
 var fxCopAds = engine.buildFx({
   fixture: true,
   pairs: { PEN: { compra: 3.5, venta: 3.7 }, COP: { compra: 4000, venta: 4200 } },
   eurRef: { fixture: true, source: 'frankfurter', usdToEur: 0.9 }
 });
 fxCopAds.pairs = {
-  PEN: { ads: adsCompraInline }, // compra asc 3.50→3.75: best 3.50, max 3.75
-  COP: { ads: [
-    { price: 4250, min: 5, max: 1000000, available: 1000000 }, // venta desc: best = max = 4250
-    { price: 4200, min: 5, max: 1000000, available: 1000000 }
+  PEN: { ads: adsCompraInline }, // compra asc: best/min 3.50 … max 3.75
+  COP: { ads: [                  // venta desc: best 4250 … min 4190; terceros 4240/4190
+    { price: 4250, min: 5, max: 999999, available: 999999, platform: 'bybit' },
+    { price: 4245, min: 5, max: 999999, available: 999999, platform: 'bybit' },
+    { price: 4240, min: 5, max: 999999, available: 999999, platform: 'bybit' },
+    { price: 4200, min: 5, max: 999999, available: 999999, platform: 'binance' },
+    { price: 4195, min: 5, max: 999999, available: 999999, platform: 'binance' },
+    { price: 4190, min: 5, max: 999999, available: 999999, platform: 'binance' }
   ] }
 };
-var qMaxCop = engine.caseQuoteScenario(engine.defaultSettings(), fxCopAds, {
+var qMaxCop = engine.caseQuoteScenario(S, fxCopAds, {
   pair: ['PEN', 'COP'], direction: 'AB', deposit: 100,
   originMode: 'max', destMode: 'max',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02, // aún así el modo Máximo fuerza 0
   commissionPct: 0.05, terceroOn: false
 });
 check('caseQuoteScenario Máximo PEN→COP: ok', qMaxCop.ok === true);
-check('caseQuoteScenario PEN→COP máx compra: originRate = 3.75 (mayor, sin 2%)',
+check('caseQuoteScenario PEN→COP máx compra: originRate = 3.75 (tercer Binance, mayor de los terceros)',
   Math.abs(qMaxCop.rateInfo.originRate - 3.75) < 1e-9);
-check('caseQuoteScenario PEN→COP máx venta: destRate = 4250 (mayor, sin 2%)',
-  Math.abs(qMaxCop.rateInfo.destRate - 4250) < 1e-9);
-check('caseQuoteScenario PEN→COP Máximo: safetyPct = 0 (sin 2%)', qMaxCop.rateInfo.safetyPct === 0);
-check('caseQuoteScenario PEN→COP Máximo: scenario sin safety (0/0)',
-  qMaxCop.scenario.vesSafetyPct === 0 && qMaxCop.scenario.destSafetyPct === 0);
-check('caseQuoteScenario PEN→COP Máximo: adUsed = ad de mayor price (3.75)',
+check('caseQuoteScenario PEN→COP máx venta: destRate = 4240 (tercer Bybit, mayor de los terceros)',
+  Math.abs(qMaxCop.rateInfo.destRate - 4240) < 1e-9);
+check('caseQuoteScenario PEN→COP Máximo: sin 2% y sin safetyPct (3e lo elimina)',
+  qMaxCop.rateInfo.safetyPct === undefined && qMaxCop.scenario.vesSafetyPct === undefined);
+check('caseQuoteScenario PEN→COP Máximo: adUsed = ad del tercer Binance (3.75)',
   qMaxCop.rateInfo.adUsed != null && qMaxCop.rateInfo.adUsed.ad.price === 3.75 && qMaxCop.rateInfo.adUsed.mode === 'max');
 check('caseQuoteScenario PEN→COP Máximo: rateInfo coherente (efectiva = delivered/deposit, pactada bruta, mercado, profitSafety)',
   qMaxCop.rateInfo.effectiveRate != null && Math.abs(qMaxCop.rateInfo.effectiveRate - Math.round(qMaxCop.delivered / qMaxCop.deposit * 100) / 100) < 1e-9 &&
-  Math.abs(qMaxCop.rateInfo.quotedRate - Math.round(4250 / 3.75 * 100) / 100) < 1e-9 &&
+  Math.abs(qMaxCop.rateInfo.quotedRate - Math.round(4240 / 3.75 * 100) / 100) < 1e-9 &&
   typeof qMaxCop.rateInfo.marketRate === 'number' && typeof qMaxCop.rateInfo.profitSafety === 'number');
-// La ad del destino también queda expuesta vía destScenarios.max (escenario usado)
 var destMax = qMaxCop.rateInfo.destScenarios.max;
-check('caseQuoteScenario PEN→COP Máximo: destScenarios.max.destRate = 4250 y destAd.price = 4250',
-  destMax && Math.abs(destMax.destRate - 4250) < 1e-9 && destMax.destAd && destMax.destAd.rate === 4250);
-// 3d: average con ads PROPAGA source/adsCount y adUsed null; best ≤ average ≤ max
-var qAvgCop = engine.caseQuoteScenario(engine.defaultSettings(), fxCopAds, {
+check('caseQuoteScenario PEN→COP Máximo: destScenarios.max.destRate = 4240 y destAd.price = 4240',
+  destMax && Math.abs(destMax.destRate - 4240) < 1e-9 && destMax.destAd && destMax.destAd.rate === 4240);
+check('caseQuoteScenario PEN→COP Máximo: delivered = 107.413,33 (5%, máximo/máximo)',
+  qMaxCop.delivered === 107413.33, String(qMaxCop.delivered));
+
+// Mejor/Mejor: min compra / max venta a 40 USD eq
+var qBestCop = engine.caseQuoteScenario(S, fxCopAds, {
   pair: ['PEN', 'COP'], direction: 'AB', deposit: 100,
-  originMode: 'average', destMode: 'average',
+  originMode: 'best', destMode: 'best', commissionPct: 0.05, terceroOn: false
+});
+check('caseQuoteScenario Mejor PEN→COP: originRate 3.50 (min compra) y destRate 4250 (max venta)',
+  Math.abs(qBestCop.rateInfo.originRate - 3.5) < 1e-9 && Math.abs(qBestCop.rateInfo.destRate - 4250) < 1e-9);
+check('caseQuoteScenario Mejor PEN→COP: delivered = 115.357,14', qBestCop.delivered === 115357.14, String(qBestCop.delivered));
+
+// average/average: media de ejecutables (monto real)
+var qAvgCop = engine.caseQuoteScenario(S, fxCopAds, {
+  pair: ['PEN', 'COP'], direction: 'AB', deposit: 100,
+  originMode: 'average', destMode: 'average', commissionPct: 0.05, terceroOn: false
+});
+check('caseQuoteScenario average PEN→COP: ok y adUsed null', qAvgCop.ok === true && qAvgCop.rateInfo.adUsed == null);
+check('caseQuoteScenario average PEN→COP: originRate (3.595) ≠ media FX 3.5 y destRate 4220 (media de 6)',
+  Math.abs(qAvgCop.rateInfo.originRate - 3.595) < 1e-9 && Math.abs(qAvgCop.rateInfo.destRate - 4220) < 1e-9);
+check('caseQuoteScenario average PEN→COP: source ad_average_* y adsCount 6',
+  qAvgCop.rateInfo.originSource === 'ad_average_compra' && qAvgCop.rateInfo.destSource === 'ad_average_venta' &&
+  qAvgCop.rateInfo.originAdsCount === 6 && qAvgCop.rateInfo.destAdsCount === 6);
+check('caseQuoteScenario average PEN→COP: delivered = 111.515,99', qAvgCop.delivered === 111515.99, String(qAvgCop.delivered));
+
+// min/min: menor price ejecutable (monto real)
+var qMinCop = engine.caseQuoteScenario(S, fxCopAds, {
+  pair: ['PEN', 'COP'], direction: 'AB', deposit: 100,
+  originMode: 'min', destMode: 'min', commissionPct: 0.05, terceroOn: false
+});
+check('caseQuoteScenario min PEN→COP: originRate 3.50 y destRate 4190 (menor price venta)',
+  Math.abs(qMinCop.rateInfo.originRate - 3.5) < 1e-9 && Math.abs(qMinCop.rateInfo.destRate - 4190) < 1e-9);
+check('caseQuoteScenario min PEN→COP: delivered = 113.728,57', qMinCop.delivered === 113728.57, String(qMinCop.delivered));
+check('caseQuoteScenario matriz: min ≤ average y mejor compra ≤ max compra',
+  qMinCop.rateInfo.originRate <= qAvgCop.rateInfo.originRate && qAvgCop.rateInfo.originRate <= qMaxCop.rateInfo.originRate &&
+  qMaxCop.rateInfo.destRate <= qBestCop.rateInfo.destRate && qMinCop.rateInfo.destRate <= qAvgCop.rateInfo.destRate);
+
+console.log('\n[14e] caseQuoteScenario: warnings <3 solo en scenarios.max (rateInfo.warnings = [] en best)');
+// Binance PEN/compra con 2 anuncios (<3) → max avisa; Bybit con 3 → sin aviso.
+var fxWarnQ = engine.buildFx({
+  fixture: true,
+  pairs: { PEN: { compra: 3.5, venta: 3.7 }, COP: { compra: 4000, venta: 4200 } },
+  eurRef: { fixture: true, source: 'frankfurter', usdToEur: 0.9 }
+});
+fxWarnQ.pairs = {
+  PEN: { ads: [
+    { price: 3.50, min: 5, max: 500, available: 50, platform: 'binance' },
+    { price: 3.60, min: 10, max: 2000, available: 200, platform: 'binance' },
+    { price: 3.52, min: 8, max: 8000, available: 800, platform: 'bybit' },
+    { price: 3.55, min: 8, max: 8000, available: 800, platform: 'bybit' },
+    { price: 3.65, min: 8, max: 8000, available: 800, platform: 'bybit' }
+  ] },
+  COP: { ads: [
+    { price: 4250, min: 5, max: 999999, available: 999999, platform: 'bybit' },
+    { price: 4245, min: 5, max: 999999, available: 999999, platform: 'bybit' },
+    { price: 4240, min: 5, max: 999999, available: 999999, platform: 'bybit' },
+    { price: 4200, min: 5, max: 999999, available: 999999, platform: 'binance' },
+    { price: 4195, min: 5, max: 999999, available: 999999, platform: 'binance' },
+    { price: 4190, min: 5, max: 999999, available: 999999, platform: 'binance' }
+  ] }
+};
+var qBestWarn = engine.caseQuoteScenario(S, fxWarnQ, {
+  pair: ['PEN', 'COP'], direction: 'AB', deposit: 100,
+  originMode: 'best', destMode: 'best', commissionPct: 0.05, terceroOn: false
+});
+check('caseQuoteScenario best PEN→COP (binance <3): ok', qBestWarn.ok === true, JSON.stringify(qBestWarn.error || qBestWarn.delivered));
+check('caseQuoteScenario best: rateInfo.warnings = [] aunque haya plataforma con <3 anuncios',
+  Array.isArray(qBestWarn.rateInfo.warnings) && qBestWarn.rateInfo.warnings.length === 0,
+  JSON.stringify(qBestWarn.rateInfo.warnings));
+check('caseQuoteScenario best: scenarios.max.warnings conserva 1 aviso (lado compra <3, de binance)',
+  Array.isArray(qBestWarn.rateInfo.originScenarios.max.warnings) &&
+  qBestWarn.rateInfo.originScenarios.max.warnings.length === 1 &&
+  /binance/.test(qBestWarn.rateInfo.originScenarios.max.warnings[0]),
+  JSON.stringify(qBestWarn.rateInfo.originScenarios.max.warnings));
+
+console.log('\n[15] caseQuoteScenario — tasas manuales (3e): factor de seguridad por lado');
+// Manual origen 3.60 vs sistema (Máximo) 3.75 → factor = (3.75 − 3.60)/3.75 × 100 = 4 % (descuento)
+var qMan = engine.caseQuoteScenario(S, fxCopAds, {
+  pair: ['PEN', 'COP'], direction: 'AB', deposit: 100,
+  originMode: 'max', destMode: 'max', originManualRate: 3.6,
   commissionPct: 0.05, terceroOn: false
 });
-check('caseQuoteScenario average PEN→COP: ok', qAvgCop.ok === true);
-check('caseQuoteScenario average PEN→COP: adUsed null (el promedio no es un anuncio único)', qAvgCop.rateInfo.adUsed == null);
-check('caseQuoteScenario average PEN→COP: rateInfo originSource/destSource ad_average_* y adsCount',
-  qAvgCop.rateInfo.originSource === 'ad_average_compra' && qAvgCop.rateInfo.destSource === 'ad_average_venta' &&
-  qAvgCop.rateInfo.originAdsCount === 3 && qAvgCop.rateInfo.destAdsCount === 2);
-check('caseQuoteScenario average PEN→COP: coherencia best ≤ average ≤ max en ambos lados (bug 3d)',
-  qMaxCop.rateInfo.originRate >= qAvgCop.rateInfo.originRate && qAvgCop.rateInfo.originRate >= 3.50 &&
-  qMaxCop.rateInfo.destRate >= qAvgCop.rateInfo.destRate);
-check('caseQuoteScenario average PEN→COP: originRate NO es la media FX 3.5 (era el bug)', qAvgCop.rateInfo.originRate !== 3.5);
-// VES sigue igual: conservative 2% y max coexisten en rateScenarios
-var scVes = engine.rateScenarios(S, FX, ['VES', 'PEN'], 'BA', 10, 'compra');
-check('VES sigue igual: el orden del libro se conserva (best ≤ average ≤ conservative en compra; best ≥ … en venta)',
-  scVes.best.originRate <= scVes.average.originRate && scVes.average.originRate <= scVes.conservative.originRate &&
-  scVes.best.destRate >= scVes.average.destRate && scVes.average.destRate >= scVes.conservative.destRate);
-var qVesIgual = engine.caseQuoteScenario(engine.defaultSettings(), FX, {
-  pair: ['VES', 'PEN'], direction: 'BA', deposit: 100,
-  originMode: 'conservative', destMode: 'conservative', vesSafetyPct: 0, destSafetyPct: 0.02
+check('caseQuoteScenario manual origen: ok', qMan.ok === true);
+check('caseQuoteScenario manual origen: originRate = manual 3.60 (la manual manda)',
+  Math.abs(qMan.rateInfo.originRate - 3.6) < 1e-9);
+check('caseQuoteScenario manual origen: originSystemRate = 3.75 (tasa del sistema)',
+  Math.abs(qMan.rateInfo.originSystemRate - 3.75) < 1e-9);
+check('caseQuoteScenario manual origen: originSecurityFactor = 4 % ((sistema − manual)/sistema × 100)',
+  Math.abs(qMan.rateInfo.originSecurityFactor - 4) < 1e-6);
+check('caseQuoteScenario manual origen: originSource = manual y adUsed null',
+  qMan.rateInfo.originSource === 'manual' && qMan.rateInfo.adUsed == null);
+check('caseQuoteScenario manual origen: delivered = 111.888,89 (base manual)',
+  qMan.delivered === 111888.89, String(qMan.delivered));
+check('caseQuoteScenario manual origen: destino sin manual → destManualRate null y factor null',
+  qMan.rateInfo.destManualRate == null && qMan.rateInfo.destSecurityFactor == null && qMan.rateInfo.destSource === 'ad_max_venta');
+// Manual destino mayor que el sistema → factor NEGATIVO (recargo), se muestra tal cual
+var qManNeg = engine.caseQuoteScenario(S, fxCopAds, {
+  pair: ['PEN', 'COP'], direction: 'AB', deposit: 100,
+  originMode: 'max', destMode: 'max', destManualRate: 4250,
+  commissionPct: 0.05, terceroOn: false
 });
-check('VES sigue igual: conservative PEN→VES venta 1078 (1100×0,98) → 28.644,00',
-  Math.abs(qVesIgual.rateInfo.destRate - 1078) < 1e-9 && qVesIgual.delivered === 28644.00, String(qVesIgual.delivered));
+check('caseQuoteScenario manual destino: destRate = 4250 (manual manda aunque recargue)',
+  Math.abs(qManNeg.rateInfo.destRate - 4250) < 1e-9);
+check('caseQuoteScenario manual destino: destSecurityFactor NEGATIVO ≈ −0.2358 % (recargo, dec. supervisada)',
+  Math.abs(qManNeg.rateInfo.destSecurityFactor - ((4240 - 4250) / 4240 * 100)) < 1e-9, String(qManNeg.rateInfo.destSecurityFactor));
+check('caseQuoteScenario manual destino: destSource = manual y delivered = 107.666,67',
+  qManNeg.rateInfo.destSource === 'manual' && qManNeg.delivered === 107666.67, String(qManNeg.delivered));
+// Manual en modo inverso también manda
+var qManRev = engine.caseQuoteScenario(S, fxCopAds, {
+  pair: ['PEN', 'COP'], direction: 'AB', originMode: 'max', destMode: 'max',
+  originManualRate: 3.6, target: 100000, reversed: true,
+  commissionPct: 0.05, terceroOn: false
+});
+check('caseQuoteScenario manual inverso: ok y originRate = 3.60 (manual)',
+  qManRev.ok === true && Math.abs(qManRev.rateInfo.originRate - 3.6) < 1e-9);
+check('caseQuoteScenario manual inverso: revSecurityFactor = 4 %',
+  Math.abs(qManRev.rateInfo.originSecurityFactor - 4) < 1e-6);
 
-console.log('\n[15] caseQuoteScenario — PEN→VES 160 PEN, 5% com, 2% VES, tercero off');
+console.log('\n[15b] caseQuoteScenario con fixture congelado sin 2% (3e): los 2% ya no existen');
 var Spen = engine.defaultSettings();
-// P0: rateOrigin = compra_PEN = 3.5845 (sin *0.98, VES es destino no origen)
-// rateDest = venta_VES * (1-0.02) = 1087.9581 * 0.98 = 1066.199 (VES interviene destino)
-// grossUsd = 160 / 3.5845 = 44.6372; netUsd = 44.6372 * 0.95 = 42.4054
-// delivered = round2(42.4054 * 1066.199)
+// PEN→VES 160 PEN, 5% com: SIN 2% → destRate = venta_VES 1087.9581 (antes ×0.98)
 var qPenVes = engine.caseQuoteScenario(Spen, FXreal, {
   pair: ['VES', 'PEN'], direction: 'BA', deposit: 160,
   originMode: 'best', destMode: 'best',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02,
   commissionPct: 0.05, terceroOn: false
 });
 check('caseQuoteScenario PEN→VES: ok', qPenVes.ok === true);
-check('caseQuoteScenario PEN→VES: currencyIn PEN', qPenVes.currencyIn === 'PEN');
-check('caseQuoteScenario PEN→VES: currencyOut VES', qPenVes.currencyOut === 'VES');
+check('caseQuoteScenario PEN→VES: currencyIn PEN / currencyOut VES', qPenVes.currencyIn === 'PEN' && qPenVes.currencyOut === 'VES');
 check('caseQuoteScenario PEN→VES: deposit 160 PEN', qPenVes.deposit === 160);
-check('caseQuoteScenario PEN→VES: commission 5%', qPenVes.commission === 0.05 && qPenVes.commissionPct === 5);
-check('caseQuoteScenario PEN→VES: tercero 0 (off)', qPenVes.tercero === 0);
-// P0: vesSafetyPct solo si VES es origen → rateOrigin sin ajuste
-check('caseQuoteScenario PEN→VES: originRate = 3.5845 (compra_PEN sin 2%)',
+check('caseQuoteScenario PEN→VES: commission 5%, tercero 0 (off)', qPenVes.commission === 0.05 && qPenVes.commissionPct === 5 && qPenVes.tercero === 0);
+check('caseQuoteScenario PEN→VES: originRate = 3.5845 (compra_PEN, sin 2%)',
   Math.abs(qPenVes.rateInfo.originRate - 3.5845) < 0.001);
-// P1-3: destSafetyPct porque VES interviene (destino) → rateDest = venta * 0.98
-check('caseQuoteScenario PEN→VES: destRate = 1087.9581 * 0.98 = 1066.199...',
-  Math.abs(qPenVes.rateInfo.destRate - 1087.9581 * 0.98) < 0.001);
-var qOriginRate2 = qPenVes.rateInfo.originRate;
-var qDestRate2 = qPenVes.rateInfo.destRate;
-var expectedGross3 = 160 / qOriginRate2;
-var expectedDelivered3 = Math.round(expectedGross3 * 0.95 * qDestRate2 * 100) / 100;
-check('caseQuoteScenario PEN→VES: grossUsd ≈ 44.6372',
-  Math.abs(qPenVes.grossUsd - expectedGross3) < 0.001);
-check('caseQuoteScenario PEN→VES: delivered = ' + expectedDelivered3, qPenVes.delivered === expectedDelivered3);
-// Profit = grossUsd - netUsd = round2(gross * 0.05)
-check('caseQuoteScenario PEN→VES: profit ≈ 2.23 (gross * 5%)',
-  Math.abs(qPenVes.profitUsd - Math.round(expectedGross3 * 0.05 * 100) / 100) < 0.01);
-// rateInfo checks
-check('caseQuoteScenario PEN→VES: rateInfo.originScenarios existe',
-  qPenVes.rateInfo.originScenarios && qPenVes.rateInfo.originScenarios.best);
-check('caseQuoteScenario PEN→VES: rateInfo.destScenarios existe',
-  qPenVes.rateInfo.destScenarios && qPenVes.rateInfo.destScenarios.best);
-check('caseQuoteScenario PEN→VES: rateInfo.effectiveRate numérico', typeof qPenVes.rateInfo.effectiveRate === 'number' && isFinite(qPenVes.rateInfo.effectiveRate));
-check('caseQuoteScenario PEN→VES: rateInfo.quotedRate numérico', typeof qPenVes.rateInfo.quotedRate === 'number' && isFinite(qPenVes.rateInfo.quotedRate));
-check('caseQuoteScenario PEN→VES: rateInfo.effectiveRate != quotedRate',
-  Math.abs(qPenVes.rateInfo.effectiveRate - qPenVes.rateInfo.quotedRate) > 0.01);
-check('caseQuoteScenario PEN→VES: rateInfo.safetyPct = 0.02 (solo vesSafety P1-3)', qPenVes.rateInfo.safetyPct === 0.02);
-// P1-4: rateInfo con valores concretos
-check('caseQuoteScenario PEN→VES: rateInfo.originRate = 3.5845',
-  qPenVes.rateInfo.originRate === 3.5845);
-check('caseQuoteScenario PEN→VES: rateInfo.destRate ≈ 1066.20',
-  Math.abs(qPenVes.rateInfo.destRate - 1066.199) < 0.001);
-check('caseQuoteScenario PEN→VES: rateInfo.marketRate numérico',
-  qPenVes.rateInfo.marketRate != null && typeof qPenVes.rateInfo.marketRate === 'number');
-check('caseQuoteScenario PEN→VES: rateInfo.profitSafety numérico',
-  qPenVes.rateInfo.profitSafety != null && typeof qPenVes.rateInfo.profitSafety === 'number');
-// scenario metadata
-check('caseQuoteScenario: scenario.vesSafetyPct = 0.02',
-  qPenVes.scenario && qPenVes.scenario.vesSafetyPct === 0.02);
-check('caseQuoteScenario: scenario.destSafetyPct = 0.02',
-  qPenVes.scenario && qPenVes.scenario.destSafetyPct === 0.02);
-
-console.log('\n[15b] VES→PEN y VES→COP con 2% suma/resta');
-// VES→PEN: deposit 10000 VES (usar FX real: compra_VES=1098.2057, venta_PEN=3.4462)
-// rateOrigin = compra_VES * 1.02 = 1098.2057 * 1.02 = 1120.170...
-// rateDest = venta_PEN * 0.98 = 3.4462 * 0.98 = 3.37728...
+check('caseQuoteScenario PEN→VES: destRate = 1087.9581 (venta_VES, SIN ×0,98)',
+  Math.abs(qPenVes.rateInfo.destRate - 1087.9581) < 0.001);
+check('caseQuoteScenario PEN→VES: grossUsd ≈ 44.6366', Math.abs(qPenVes.grossUsd - 160 / 3.5845) < 0.001);
+check('caseQuoteScenario PEN→VES: delivered = 46.134,64', qPenVes.delivered === 46134.64, String(qPenVes.delivered));
+check('caseQuoteScenario PEN→VES: profit ≈ 2.23', Math.abs(qPenVes.profitUsd - 2.23) < 0.01);
+check('caseQuoteScenario PEN→VES: rateInfo.originScenarios/destScenarios con best',
+  qPenVes.rateInfo.originScenarios && qPenVes.rateInfo.originScenarios.best && qPenVes.rateInfo.destScenarios && qPenVes.rateInfo.destScenarios.best);
+check('caseQuoteScenario PEN→VES: rateInfo.effectiveRate/quotedRate/marketRate numéricos y desacoplados',
+  typeof qPenVes.rateInfo.effectiveRate === 'number' && typeof qPenVes.rateInfo.quotedRate === 'number' &&
+  Math.abs(qPenVes.rateInfo.effectiveRate - qPenVes.rateInfo.quotedRate) > 0.01 &&
+  Math.abs(qPenVes.rateInfo.marketRate - 303.52) < 0.01);
+check('caseQuoteScenario PEN→VES: sin 2% → sin safetyPct y sin цены de safety en scenario',
+  qPenVes.rateInfo.safetyPct === undefined && qPenVes.scenario.vesSafetyPct === undefined);
+check('caseQuoteScenario PEN→VES: sin manual → manual/factor null y source media(...)',
+  qPenVes.rateInfo.originManualRate == null && qPenVes.rateInfo.originSecurityFactor == null &&
+  qPenVes.rateInfo.destSource === 'media(VES/venta)');
+// VES→PEN 10000: originRate = compra_VES 1098.2057 (sin ×1,02), destRate = venta_PEN 3.4462
 var qVesPen = engine.caseQuoteScenario(Spen, FXreal, {
   pair: ['VES', 'PEN'], direction: 'AB', deposit: 10000,
-  originMode: 'best', destMode: 'best',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02,
-  commissionPct: 0.05, terceroOn: false
+  originMode: 'best', destMode: 'best', commissionPct: 0.05, terceroOn: false
 });
-check('caseQuoteScenario VES→PEN: ok', qVesPen.ok === true);
-check('caseQuoteScenario VES→PEN: currencyIn VES', qVesPen.currencyIn === 'VES');
-check('caseQuoteScenario VES→PEN: originRate = 1098.2057 * 1.02 = 1120.170...',
-  Math.abs(qVesPen.rateInfo.originRate - 1098.2057 * 1.02) < 0.001);
-check('caseQuoteScenario VES→PEN: destRate = 3.4462 * 0.98 = 3.37728 (resta 2%)',
-  Math.abs(qVesPen.rateInfo.destRate - 3.4462 * 0.98) < 0.001);
-var gvOrigin = qVesPen.rateInfo.originRate;
-var gvDest = qVesPen.rateInfo.destRate;
-var gvExpectedDel = Math.round(10000 / gvOrigin * 0.95 * gvDest * 100) / 100;
-check('caseQuoteScenario VES→PEN: delivered = 28.64', qVesPen.delivered === 28.64);
-// P1-3: VES→COP con vesSafety a origen y destSafety a destino (VES interviene)
+check('caseQuoteScenario VES→PEN: originRate = 1098.2057 (sin 2%)', Math.abs(qVesPen.rateInfo.originRate - 1098.2057) < 0.001);
+check('caseQuoteScenario VES→PEN: destRate = 3.4462 (sin 2%)', Math.abs(qVesPen.rateInfo.destRate - 3.4462) < 0.001);
+check('caseQuoteScenario VES→PEN: delivered = 29,81', qVesPen.delivered === 29.81, String(qVesPen.delivered));
+// VES→COP 10000: destRate = venta_COP 3379.0956 sin 2%
 var qVesCop = engine.caseQuoteScenario(Spen, FXreal, {
   pair: ['VES', 'COP'], direction: 'AB', deposit: 10000,
-  originMode: 'best', destMode: 'best',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02,
-  commissionPct: 0.05, terceroOn: false
+  originMode: 'best', destMode: 'best', commissionPct: 0.05, terceroOn: false
 });
-check('caseQuoteScenario VES→COP: ok', qVesCop.ok === true);
-check('caseQuoteScenario VES→COP: currencyIn VES currencyOut COP',
-  qVesCop.currencyIn === 'VES' && qVesCop.currencyOut === 'COP');
-check('caseQuoteScenario VES→COP: originRate = compra_VES * 1.02',
-  Math.abs(qVesCop.rateInfo.originRate - 1098.2057 * 1.02) < 0.001);
-check('caseQuoteScenario VES→COP: destRate = venta_COP * 0.98',
-  Math.abs(qVesCop.rateInfo.destRate - 3379.0956 * 0.98) < 0.001);
-check('caseQuoteScenario VES→COP: safetyPct = 0.04 (ambos lados)',
-  qVesCop.rateInfo.safetyPct === 0.04);
-
-console.log('\n[15c] vesSafetyPct = 0: sin 2% VES');
-// vesSafetyPct=0: no ajuste en VES origin, pero destSafetyPct sigue
-var qNo2 = engine.caseQuoteScenario(Spen, FXreal, {
-  pair: ['VES', 'PEN'], direction: 'AB', deposit: 10000,
-  originMode: 'best', destMode: 'best',
-  vesSafetyPct: 0, destSafetyPct: 0.02,
-  commissionPct: 0.05, terceroOn: false
-});
-check('caseQuoteScenario vesSafetyPct=0: originRate = 1098.2057 sin ajuste ves',
-  Math.abs(qNo2.rateInfo.originRate - 1098.2057) < 0.001);
-check('caseQuoteScenario vesSafetyPct=0: destRate = 3.4462 * 0.98 = 3.37728',
-  Math.abs(qNo2.rateInfo.destRate - 3.4462 * 0.98) < 0.001);
-// P1-3: Sin VES en par — no aplica 2% en ningún lado
-// COP→PEN (BA): origin=COP, dest=PEN
+check('caseQuoteScenario VES→COP: originRate = 1098.2057 y destRate = 3379.0956 (sin 2%, ambos lados)',
+  Math.abs(qVesCop.rateInfo.originRate - 1098.2057) < 0.001 && Math.abs(qVesCop.rateInfo.destRate - 3379.0956) < 0.001);
+check('caseQuoteScenario VES→COP: delivered = 29.230,78', qVesCop.delivered === 29230.78, String(qVesCop.delivered));
+// COP→PEN (BA): 100.000 COP
 var qNoVesBA = engine.caseQuoteScenario(Spen, FXreal, {
   pair: ['PEN', 'COP'], direction: 'BA', deposit: 100000,
-  originMode: 'best', destMode: 'best',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02,
-  commissionPct: 0.05, terceroOn: false
+  originMode: 'best', destMode: 'best', commissionPct: 0.05, terceroOn: false
 });
-check('caseQuoteScenario COP→PEN: ok', qNoVesBA.ok === true);
-check('caseQuoteScenario COP→PEN: originRate = COP compra 3522.9472 (sin 2%)',
-  Math.abs(qNoVesBA.rateInfo.originRate - 3522.9472) < 0.001);
-check('caseQuoteScenario COP→PEN: destRate = PEN venta 3.4462 (sin 2%)',
-  Math.abs(qNoVesBA.rateInfo.destRate - 3.4462) < 0.001);
-check('caseQuoteScenario COP→PEN: safetyPct = 0 (sin VES)',
-  qNoVesBA.rateInfo.safetyPct === 0);
-// PEN→COP real (AB): origin=PEN, dest=COP — sin 2%
-var qPenCop = engine.caseQuoteScenario(Spen, FXreal, {
-  pair: ['PEN', 'COP'], direction: 'AB', deposit: 100,
-  originMode: 'best', destMode: 'best',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02,
-  commissionPct: 0.05, terceroOn: false
-});
-check('caseQuoteScenario PEN→COP real: ok', qPenCop.ok === true);
-check('caseQuoteScenario PEN→COP real: currencyIn PEN currencyOut COP',
-  qPenCop.currencyIn === 'PEN' && qPenCop.currencyOut === 'COP');
-check('caseQuoteScenario PEN→COP real: originRate = compra_PEN sin 2%',
-  Math.abs(qPenCop.rateInfo.originRate - 3.5845) < 0.001);
-check('caseQuoteScenario PEN→COP real: destRate = venta_COP sin 2%',
-  Math.abs(qPenCop.rateInfo.destRate - 3379.0956) < 0.001);
-check('caseQuoteScenario PEN→COP real: safetyPct = 0 (sin VES)',
-  qPenCop.rateInfo.safetyPct === 0);
+check('caseQuoteScenario COP→PEN: originRate = 3522.9472 y destRate = 3.4462 (sin 2%)',
+  Math.abs(qNoVesBA.rateInfo.originRate - 3522.9472) < 0.001 && Math.abs(qNoVesBA.rateInfo.destRate - 3.4462) < 0.001);
 
-console.log('\n[15d] Reverse simétrico (PEN→VES inverso)');
+console.log('\n[15d] Reverse simétrico (PEN→VES inverso) sin 2%');
 var qRev = engine.caseQuoteScenario(Spen, FXreal, {
   pair: ['VES', 'PEN'], direction: 'BA', target: 47771.43,
   originMode: 'best', destMode: 'best',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02,
   commissionPct: 0.05, terceroOn: false, reversed: true
 });
-check('caseQuoteScenario reverse: ok', qRev.ok === true);
-check('caseQuoteScenario reverse: reversed = true', qRev.reversed === true);
-check('caseQuoteScenario reverse: currencyIn PEN, currencyOut VES',
-  qRev.currencyIn === 'PEN' && qRev.currencyOut === 'VES');
+check('caseQuoteScenario reverse: ok/reversed/monedas', qRev.ok === true && qRev.reversed === true && qRev.currencyIn === 'PEN' && qRev.currencyOut === 'VES');
 check('caseQuoteScenario reverse: delivered = target 47771.43', qRev.delivered === 47771.43);
-// deposit deducido
-var revDestRate = qRev.rateInfo.destRate;
-var revOriginRate = qRev.rateInfo.originRate;
-var revGrossUsd = 47771.43 / revDestRate;
-var revNetUsd = revGrossUsd / 0.95;
-var revDeposit = Math.round(revNetUsd * revOriginRate * 100) / 100;
-check('caseQuoteScenario reverse: deposit ≈ ' + revDeposit + ' PEN',
-  Math.abs(qRev.deposit - revDeposit) < 0.5);
-// Profit en reverse
+var revGrossUsd = 47771.43 / 1087.9581 / 0.95;
+var revDeposit = Math.round(revGrossUsd * 3.5845 * 100) / 100;
+check('caseQuoteScenario reverse: deposit ≈ ' + revDeposit + ' PEN (destRate sin 2%)', Math.abs(qRev.deposit - revDeposit) < 0.5, String(qRev.deposit));
 check('caseQuoteScenario reverse: profit > 0', qRev.profitUsd > 0);
-check('caseQuoteScenario reverse: rateInfo.originScenarios',
-  qRev.rateInfo.originScenarios && qRev.rateInfo.originScenarios.best);
-
-// P1-a: marketRate es cross (raw dest/origen) del mejor escenario (~303.52)
-check('caseQuoteScenario reverse: marketRate cross ≈ 303.52 (raw best scenario)',
-  Math.abs(qRev.rateInfo.marketRate - 303.52) < 0.01);
-// P1-b: profitSafety = deposit * (marketRate - quotedRate)
-check('caseQuoteScenario reverse: profitSafety numérico y > 0',
-  qRev.rateInfo.profitSafety != null && qRev.rateInfo.profitSafety > 0);
-// P2-a: profitSafety inverso concreto: deposit × (marketRate − quotedRate)
+check('caseQuoteScenario reverse: rateInfo.originScenarios', qRev.rateInfo.originScenarios && qRev.rateInfo.originScenarios.best);
+check('caseQuoteScenario reverse: marketRate cross ≈ 303.52 (raw best scenario)', Math.abs(qRev.rateInfo.marketRate - 303.52) < 0.01);
 check('caseQuoteScenario reverse: profitSafety = deposit × (marketRate − quotedRate)',
   Math.abs(qRev.rateInfo.profitSafety - (qRev.deposit * (qRev.rateInfo.marketRate - qRev.rateInfo.quotedRate))) < 0.01);
-// P1-c: effectiveRate inverso = delivered / deposit (deposit calculado), no depositVal placeholder
 check('caseQuoteScenario reverse: effectiveRate = delivered / deposit calculado',
   Math.abs(qRev.rateInfo.effectiveRate - (qRev.delivered / qRev.deposit)) < 0.01);
-
-console.log('\n[15d] caseQuoteScenario inverso con ads (bootstrap media FX → segunda pasada)');
-/* P0/BLOCK item-1: bootstrap sin fiat/placeholder.
- * FX con PEN ads { price: 3.5845, min: 100 } que solo admiten ~169 PEN.
- * El bootstrap viejo (amountUsd=10 → cost 35.8 < min 100) fallaba.
- * Con el fix: media PEN = 3.5845, amountUsd ≈ 2.79 (bootstrap con refAmount 10), segunda pasada con deposit ≈ 169.
- * El ad 3.5845 tiene cost ≈ 169 ≥ min 100 → ejecutable en la segunda pasada. */
+// reverse+ads: bootstrap media FX → primera/segunda pasada; BEST a 40 USD eq hace
+// ejecutable el ad (40×3.5845 = 143.38 ≥ min 100) incluso en la primera pasada.
 var fxAd = engine.buildFx({
   fixture: true,
   pairs: { VES: { compra: 1098.2057, venta: 1087.9581 }, PEN: { compra: 3.5845, venta: 3.4462 } },
   eurRef: { fixture: true, source: 'frankfurter', usdToEur: 0.9 }
 });
-// The if-branch in rateScenarios reads fx.pairs[curA].ads as a flat ads array
 fxAd.pairs = { PEN: { ads: [{ price: 3.5845, min: 100, max: 5000, available: 100 }] }, VES: { ads: [] } };
 var qRevAd = engine.caseQuoteScenario(Spen, fxAd, {
   pair: ['VES', 'PEN'], direction: 'BA',
   originMode: 'best', destMode: 'best',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02,
   commissionPct: 0.05, terceroOn: false, reversed: true,
   target: 47771.43
 });
 check('caseQuoteScenario reverse+ads: ok === true', qRevAd.ok === true);
-check('caseQuoteScenario reverse+ads: rateInfo.adUsed.ad.price === 3.5845',
+check('caseQuoteScenario reverse+ads: rateInfo.adUsed.ad.price === 3.5845 (BEST a 40 USD eq, 3e)',
   qRevAd.rateInfo.adUsed != null && qRevAd.rateInfo.adUsed.ad.price === 3.5845);
-check('caseQuoteScenario reverse+ads: deposit ≈ 169.06 PEN',
-  Math.abs(qRevAd.deposit - 169.06) < 0.5);
+check('caseQuoteScenario reverse+ads: deposit ≈ 165,68 PEN', Math.abs(qRevAd.deposit - 165.68) < 0.5, String(qRevAd.deposit));
 check('caseQuoteScenario reverse+ads: effectiveRate = delivered/deposit',
   Math.abs(qRevAd.rateInfo.effectiveRate - (qRevAd.delivered / qRevAd.deposit)) < 0.01);
 
 console.log('\n[15e] Tercero on (25%)');
 var qTerc = engine.caseQuoteScenario(Spen, FX, {
   pair: ['VES', 'PEN'], direction: 'BA', deposit: 160,
-  originMode: 'best', destMode: 'best',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02,
-  commissionPct: 0.05, terceroOn: true
+  originMode: 'best', destMode: 'best', commissionPct: 0.05, terceroOn: true
 });
 check('caseQuoteScenario terceroOn: tercero > 0', qTerc.tercero > 0);
-check('caseQuoteScenario terceroOn: neto = profit - diezmo - tercero',
+check('caseQuoteScenario terceroOn: neto = profit − diezmo − tercero',
   Math.abs(qTerc.neto - (qTerc.profitUsd - qTerc.diezmo - qTerc.tercero)) < 0.01);
-check('caseQuoteScenario: rateInfo.profitSafety numérico y >= 0',
-  qTerc.rateInfo.profitSafety != null && qTerc.rateInfo.profitSafety >= 0);
+check('caseQuoteScenario terceroOn: profitSafety = deposit × (market − quoted)',
+  Math.abs(qTerc.rateInfo.profitSafety - (160 * (qTerc.rateInfo.marketRate - qTerc.rateInfo.quotedRate))) < 0.01);
 
-// P1-b test: profitSafety con deposit=160 PEN→VES
-var qPenVes = engine.caseQuoteScenario(Spen, FXreal, {
-  pair: ['VES', 'PEN'], direction: 'BA', deposit: 160,
-  originMode: 'best', destMode: 'best',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02,
-  commissionPct: 0.05, terceroOn: false
-});
-check('caseQuoteScenario: marketRate cross ≈ 303.52 (PEN→VES)',
-  Math.abs(qPenVes.rateInfo.marketRate - 303.52) < 0.5);
-check('caseQuoteScenario: profitSafety = deposit * (marketRate - quotedRate)',
-  Math.abs(qPenVes.rateInfo.profitSafety - (160 * (qPenVes.rateInfo.marketRate - qPenVes.rateInfo.quotedRate))) < 0.01);
-
-console.log('\n[16] caseQuoteScenario con modo average/conservative');
+console.log('\n[16] caseQuoteScenario con modo average/min/max');
 var qAvg = engine.caseQuoteScenario(Spen, FXreal, {
   pair: ['VES', 'PEN'], direction: 'BA', deposit: 160,
-  originMode: 'average', destMode: 'average',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02,
-  commissionPct: 0.05, terceroOn: false
+  originMode: 'average', destMode: 'average', commissionPct: 0.05, terceroOn: false
 });
-check('caseQuoteScenario average: ok', qAvg.ok === true);
-check('caseQuoteScenario average: originMode = average', qAvg.scenario.originMode === 'average');
-// Sin ads, los tres modos dan la misma tasa (media FX)
+check('caseQuoteScenario average: ok y originMode = average', qAvg.ok === true && qAvg.scenario.originMode === 'average');
 var qBest = engine.caseQuoteScenario(Spen, FXreal, {
   pair: ['VES', 'PEN'], direction: 'BA', deposit: 160,
-  originMode: 'best', destMode: 'best',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02,
-  commissionPct: 0.05, terceroOn: false
+  originMode: 'best', destMode: 'best', commissionPct: 0.05, terceroOn: false
 });
-var qCons = engine.caseQuoteScenario(Spen, FXreal, {
+var qMax = engine.caseQuoteScenario(Spen, FXreal, {
   pair: ['VES', 'PEN'], direction: 'BA', deposit: 160,
-  originMode: 'conservative', destMode: 'conservative',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02,
-  commissionPct: 0.05, terceroOn: false
+  originMode: 'max', destMode: 'max', commissionPct: 0.05, terceroOn: false
 });
-// Sin ads, best ≈ average ≈ conservative (todas media FX)
-check('caseQuoteScenario: sin ads, best ≈ average ≈ conservative',
-  Math.abs(qBest.delivered - qAvg.delivered) < 0.01 && Math.abs(qAvg.delivered - qCons.delivered) < 0.01);
-// 3d: sin ads, el fallback de average es media FX con source 'media(...)' explícito
+// Sin ads, best ≈ average ≈ min ≈ max (todas media FX)
+check('caseQuoteScenario: sin ads, best ≈ average ≈ max',
+  Math.abs(qBest.delivered - qAvg.delivered) < 0.01 && Math.abs(qAvg.delivered - qMax.delivered) < 0.01);
 check('caseQuoteScenario average sin ads: rateInfo source media(...) y adsCount 0',
   qAvg.rateInfo.originSource === 'media(PEN/compra)' && qAvg.rateInfo.destSource === 'media(VES/venta)' &&
   qAvg.rateInfo.originAdsCount === 0 && qAvg.rateInfo.destAdsCount === 0 && qAvg.rateInfo.adUsed == null);
 
 console.log('\n[16b] caseQuoteScenario: error cases');
-check('caseQuoteScenario: par inválido',
-  engine.caseQuoteScenario(Spen, FX, { pair: null }).ok === false);
-check('caseQuoteScenario: origen === destino',
-  engine.caseQuoteScenario(Spen, FX, { pair: ['VES', 'VES'], deposit: 100 }).ok === false);
-check('caseQuoteScenario: monto 0 rechazado',
-  engine.caseQuoteScenario(Spen, FX, { pair: ['VES', 'PEN'], deposit: 0, useActualAmount: true, direction: 'AB' }).ok === false);
-
-
+check('caseQuoteScenario: par inválido', engine.caseQuoteScenario(Spen, FX, { pair: null }).ok === false);
+check('caseQuoteScenario: origen === destino', engine.caseQuoteScenario(Spen, FX, { pair: ['VES', 'VES'], deposit: 100 }).ok === false);
+check('caseQuoteScenario: monto 0 rechazado', engine.caseQuoteScenario(Spen, FX, { pair: ['VES', 'PEN'], deposit: 0, useActualAmount: true, direction: 'AB' }).ok === false);
 // P2-1: commissionPct=0 debe resultar commission=0
 var qZeroComm = engine.caseQuoteScenario(Spen, FXreal, {
   pair: ['VES', 'PEN'], direction: 'BA', deposit: 160,
-  originMode: 'best', destMode: 'best',
-  vesSafetyPct: 0.02, destSafetyPct: 0.02,
-  commissionPct: 0, terceroOn: false
+  originMode: 'best', destMode: 'best', commissionPct: 0, terceroOn: false
 });
-check('caseQuoteScenario: commissionPct=0 -> commission=0',
-  qZeroComm.ok === true && qZeroComm.commission === 0 && qZeroComm.commissionPct === 0);
+check('caseQuoteScenario: commissionPct=0 -> commission=0', qZeroComm.ok === true && qZeroComm.commission === 0 && qZeroComm.commissionPct === 0);
 check('caseQuoteScenario: commissionPct=0 -> delivered = round2(grossUsd * rateDest)',
   qZeroComm.delivered === Math.round(qZeroComm.grossUsd * qZeroComm.rateInfo.destRate * 100) / 100);
 
-console.log('\n[17] executeCase: registra el MISMO quote del escenario (originMode/destMode/commissionPct)');
-/* P0: si req trae originMode/destMode, executeCase delega en caseQuoteScenario —
- * una sola cotización para desglose y registro; el movimiento guarda
- * deposit/delivered/effectiveRate/commissionPct/modos/rateInfo. */
+console.log('\n[17] executeCase: registra el MISMO quote del escenario (modos/iliteral/manual en meta)');
 var stSc = engine.createInitialState();
 var execSc = engine.executeCase(stSc, FX, {
   pair: ['VES', 'PEN'], direction: 'BA', deposit: 100,
-  originMode: 'best', destMode: 'conservative',
-  vesSafetyPct: 0, destSafetyPct: 0.02, commissionPct: 0.07,
+  originMode: 'best', destMode: 'best', commissionPct: 0.07,
   date: '2026-02-07', depositAccount: 'peru', deliverAccount: 'efectivo-ves'
 });
 check('executeCase escenario: ok y movimiento operation', execSc.ok === true && execSc.movement.type === 'operation');
 check('executeCase escenario: quote.kind scenario con mismo desglose que caseQuoteScenario',
-  execSc.quote.kind === 'scenario' && execSc.quote.commission === 0.07 && execSc.quote.scenario.destMode === 'conservative');
+  execSc.quote.kind === 'scenario' && execSc.quote.commission === 0.07 && execSc.quote.scenario.destMode === 'best');
 check('executeCase escenario: in PEN 100, out VES = delivered del quote en cuentas',
   execSc.movement.in.currency === 'PEN' && execSc.movement.in.amount === 100 &&
   execSc.movement.out.currency === 'VES' && execSc.movement.out.amount === execSc.quote.delivered &&
   execSc.movement.in.account === 'peru' && execSc.movement.out.account === 'efectivo-ves');
-check('executeCase escenario: rateAt = tasas del escenario (compra origen / venta destino con 2%)',
+check('executeCase escenario: rateAt = tasas del escenario (compra origen 3.5 / venta destino 1100 sin 2%)',
   Math.abs(execSc.movement.in.rateAt - FX.unitsPerUsdCompra.PEN) < 1e-9 &&
-  Math.abs(execSc.movement.out.rateAt - FX.unitsPerUsdVenta.VES * 0.98) < 1e-9);
+  Math.abs(execSc.movement.out.rateAt - FX.unitsPerUsdVenta.VES) < 1e-9);
 var scMeta = execSc.movement.meta.case;
 check('executeCase escenario: meta guarda commissionPct/modos/effectiveRate',
-  scMeta.commissionPct === 7 && scMeta.originMode === 'best' && scMeta.destMode === 'conservative' &&
+  scMeta.commissionPct === 7 && scMeta.originMode === 'best' && scMeta.destMode === 'best' &&
   scMeta.effectiveRate === execSc.quote.rateInfo.effectiveRate, JSON.stringify(scMeta));
-check('executeCase escenario: meta guarda rateInfo del escenario (originRate/destRate/safetyPct/adUsed)',
+check('executeCase escenario: meta guarda rateInfo (originRate 3.5 / destRate 1100, quoted/market, source media(...))',
   scMeta.rateInfo && Math.abs(scMeta.rateInfo.originRate - 3.5) < 1e-9 &&
-  Math.abs(scMeta.rateInfo.destRate - 1078) < 1e-9 && scMeta.rateInfo.safetyPct === 0.02 &&
-  scMeta.rateInfo.quotedRate != null && scMeta.rateInfo.marketRate != null);
+  Math.abs(scMeta.rateInfo.destRate - 1100) < 1e-9 &&
+  scMeta.rateInfo.quotedRate != null && scMeta.rateInfo.marketRate != null &&
+  scMeta.rateInfo.destSource === 'media(VES/venta)');
 check('executeCase escenario: desglose fiscal en meta', scMeta.base > 0 && scMeta.diezmo === Math.round(scMeta.base * 0.1 * 100) / 100);
 near('saldo Perú tras escenario: +100 PEN', engine.accountBalance(stSc, 'peru').native, 100, 0.01);
 check('cadena válida tras executeCase escenario', engine.verifyChain(stSc.movements));
 check('executeCase sin originMode/destMode sigue con caseQuote legacy (kind pair)',
   engine.executeCase(engine.createInitialState(), FX, { pair: ['VES', 'PEN'], direction: 'BA', deposit: 100, date: '2026-02-07', depositAccount: 'peru', deliverAccount: 'efectivo-ves' }).quote.kind === 'pair');
 
-// P1 comisión default 7 % / 8 % COP y 2 % solo en conservative (vals del fixture).
+// 3e: executeCase con tasa manual → meta guarda manual/factor/source y rateAt = manual
+var stScM = engine.createInitialState();
+var execM = engine.executeCase(stScM, FX, {
+  pair: ['VES', 'PEN'], direction: 'BA', deposit: 100,
+  originMode: 'best', destMode: 'best', destManualRate: 1075, commissionPct: 0.07,
+  date: '2026-02-08', depositAccount: 'peru', deliverAccount: 'efectivo-ves'
+});
+check('executeCase manual: out = 28.564,29 (base manual 1075)', Math.abs(execM.movement.out.amount - 28564.29) < 0.005, String(execM.movement.out.amount));
+check('executeCase manual: rateAt out = 1075 (la manual manda en la valoración)',
+  Math.abs(execM.movement.out.rateAt - 1075) < 1e-9);
+check('executeCase manual: meta guarda destManualRate 1075, destSecurityFactor ≈ 2.2727 % y destSource manual',
+  execM.movement.meta.case.destManualRate === 1075 &&
+  Math.abs(execM.movement.meta.case.rateInfo.destSecurityFactor - ((1100 - 1075) / 1100 * 100)) < 1e-9 &&
+  execM.movement.meta.case.rateInfo.destSource === 'manual', JSON.stringify(execM.movement.meta.case.rateInfo));
+check('executeCase manual: meta guarda originManualRate null y originSecurityFactor null',
+  execM.movement.meta.case.originManualRate == null && execM.movement.meta.case.rateInfo.originSecurityFactor == null);
+check('executeCase manual: sistema preservado (destSystemRate 1100) para auditoría',
+  Math.abs(execM.movement.meta.case.rateInfo.destSystemRate - 1100) < 1e-9);
+
+// P1 comisión default 7 % / 8 % COP (vals del fixture, sin 2%).
 var qComm7 = engine.caseQuoteScenario(engine.defaultSettings(), FX, {
   pair: ['VES', 'PEN'], direction: 'BA', deposit: 100,
-  originMode: 'best', destMode: 'best', vesSafetyPct: 0, destSafetyPct: 0
+  originMode: 'best', destMode: 'best'
 });
 check('caseQuoteScenario sin commissionPct: comisión default 7 % (PEN)', qComm7.commission === 0.07 && qComm7.commissionPct === 7);
-check('P1 2%-por-modo: best PEN→VES venta 1100 (sin 2%) → 29.228,57',
-  Math.abs(qComm7.rateInfo.destRate - 1100) < 1e-9 && qComm7.delivered === 29228.57, String(qComm7.delivered));
-var qConsFix = engine.caseQuoteScenario(engine.defaultSettings(), FX, {
-  pair: ['VES', 'PEN'], direction: 'BA', deposit: 100,
-  originMode: 'best', destMode: 'conservative', vesSafetyPct: 0, destSafetyPct: 0.02
-});
-check('P1 2%-por-modo: conservative PEN→VES venta 1.078 (1100×0,98) → 28.644,00',
-  Math.abs(qConsFix.rateInfo.destRate - 1078) < 1e-9 && qConsFix.delivered === 28644.00, String(qConsFix.delivered));
+check('P1 sin 2%: best PEN→VES venta 1100 → 29.228,57', Math.abs(qComm7.rateInfo.destRate - 1100) < 1e-9 && qComm7.delivered === 29228.57, String(qComm7.delivered));
 var qComm8 = engine.caseQuoteScenario(engine.defaultSettings(), FX, {
   pair: ['VES', 'COP'], direction: 'BA', deposit: 100,
-  originMode: 'best', destMode: 'best', vesSafetyPct: 0, destSafetyPct: 0
+  originMode: 'best', destMode: 'best'
 });
 check('caseQuoteScenario sin commissionPct: comisión default 8 % (COP)', qComm8.commission === 0.08 && qComm8.commissionPct === 8);
 var execDef = engine.executeCase(engine.createInitialState(), FX, {
   pair: ['VES', 'PEN'], direction: 'BA', deposit: 100,
-  originMode: 'conservative', destMode: 'conservative', vesSafetyPct: 0.02, destSafetyPct: 0.02,
+  originMode: 'best', destMode: 'best',
   date: '2026-02-07', depositAccount: 'peru', deliverAccount: 'efectivo-ves'
 });
 check('executeCase escenario sin commissionPct: comisión default 7 % en el movimiento',

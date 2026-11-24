@@ -611,6 +611,71 @@
     btn.addEventListener('click', saveConfig);
   }
 
+  // ==================== Matriz de pares × MAX/BEST/AVG/MIN (3e) ====================
+  // Botón «Matriz» junto a «Forzar bot»: tabla de pares dirigibles A↔B cota A→B
+  // con los 4 modos a 40 USD equivalentes. Celda = tasa cruzada destRate/originRate
+  // (unidades de B por unidad de A); solo el valor, sin detalles. Sin inline (CSP).
+  function matrizFx(origin, dest) {
+    if (!S.fx) return null;
+    if (!S.rates) return S.fx;
+    const fx = Object.assign({}, S.fx);
+    fx.pairs = {};
+    const buyAds = S.rates.pairs && S.rates.pairs[origin] && S.rates.pairs[origin].ads;
+    const sellAds = S.rates.pairs && S.rates.pairs[dest] && S.rates.pairs[dest].ads;
+    if (buyAds && Array.isArray(buyAds.compra)) fx.pairs[origin] = { ads: buyAds.compra };
+    if (sellAds && Array.isArray(sellAds.venta)) fx.pairs[dest] = { ads: sellAds.venta };
+    return fx;
+  }
+
+  function renderMatriz(data) {
+    const holder = el('ta-matriz');
+    if (!holder) return;
+    if (!data || !S.fx || !globalThis.CTEngine || !S.ledger) {
+      holder.innerHTML = emptyCard('Matriz sin snapshot o libro: pulsa Actualizar.');
+      return;
+    }
+    const eng = globalThis.CTEngine;
+    const st = S.ledger.settings;
+    const all = (st.pairs || []).concat(st.customPairs || []);
+    const modes = [
+      { id: 'max', label: 'Máximo' },
+      { id: 'best', label: 'Mejor' },
+      { id: 'average', label: 'Promedio' },
+      { id: 'min', label: 'Mínimo' }
+    ];
+    const cell = function (scn, mode) {
+      const s = scn && scn[mode];
+      if (s && s.originRate != null && s.destRate != null) return num(s.destRate / s.originRate, 4);
+      return '<span class="muted">—</span>';
+    };
+    const rows = all.map(function (pair) {
+      const fxPair = matrizFx(pair[0], pair[1]);
+      const scn = eng.rateScenarios(st, fxPair, pair, 'AB', 40, 'compra');
+      return '<tr><td>' + esc(pair[0] + '/' + pair[1]) + '</td>' +
+        modes.map(function (m) { return '<td>' + cell(scn, m.id) + '</td>'; }).join('') + '</tr>';
+    }).join('');
+    holder.innerHTML = '<div class="card"><h2>Matriz de tasas</h2>' +
+      '<table class="matriz-table"><thead><tr><th scope="col">Par (A/B)</th>' +
+      modes.map(function (m) { return '<th scope="col">' + esc(m.label) + '</th>'; }).join('') +
+      '</tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<p class="muted hint">Tasa cruzada B por A (cotiza A→B) con la matriz Máximo/Mejor/Promedio/Mínimo evaluada a 40 US$ equivalentes: en la matriz, Promedio y Mínimo usan ese mismo monto de referencia de 40 US$, no el monto real del caso (el panel Casos sí usa el monto real). Máximo (tercer anuncio) = tercer anuncio de la lista por defecto de Binance y Bybit (mayor de los dos): como no pasa por el filtro de ejecutabilidad, puede quedar por debajo del Mejor (el mejor anuncio ejecutable a 40 US$).</p>' +
+      '</div>';
+  }
+
+  function bindMatriz() {
+    const btn = el('btn-matriz');
+    if (!btn || btn.dataset.bound) return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', function () {
+      const holder = el('ta-matriz');
+      if (!holder) return;
+      holder.hidden = !holder.hidden;
+      btn.setAttribute('aria-expanded', holder.hidden ? 'false' : 'true');
+      btn.textContent = holder.hidden ? 'Matriz' : 'Ocultar matriz';
+      if (!holder.hidden) renderMatriz(S && S.rates);
+    });
+  }
+
   // ==================== Render principal ====================
 
   function renderTasas() {
@@ -625,6 +690,9 @@
     renderDiagnosticsShared(data, 'ta-diagnostico');
     bindChkToggle();
     bindConfig();
+    bindMatriz();
+    const matrizHolder = el('ta-matriz');
+    if (matrizHolder && !matrizHolder.hidden) renderMatriz(data); // re-render al refrescar tasas
     if (typeof CT.renderBotStatus === 'function') CT.renderBotStatus();
     renderLastPublished(data);
   }

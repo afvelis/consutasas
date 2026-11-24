@@ -166,7 +166,7 @@ main {
 .chips .btn.chip-active, .chips .btn.mode-active { background: var(--accent2); border-color: var(--accent2); color: #fff; }
 
 /* Panel de escenarios (3b en Casos): filas Compra (origen) / Venta (destino)
- * con Mejor / 2% / Promedio. Phone-first: etiqueta arriba; en ≥480px en línea. */
+ * con Máximo / Mejor / Promedio / Mínimo. Phone-first: etiqueta arriba; en ≥480px en línea. */
 .sc-row {
   display: flex;
   flex-direction: column;
@@ -402,4 +402,25 @@ details summary { cursor: pointer; color: var(--accent); font-size: 0.88rem; }
   .rate-flash {
     animation-duration: 0.05s;
   }
+}
+
+/* Matriz de tasas (3e): tabla pares × Máximo/Mejor/Promedio/Mínimo */
+.matriz-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  margin-top: 8px;
+}
+.matriz-table th, .matriz-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: right;
+}
+.matriz-table th:first-child, .matriz-table td:first-child {
+  text-align: left;
+  font-weight: 600;
+}
+.matriz-table thead th {
+  color: var(--muted);
+  font-size: 0.85rem;
 }

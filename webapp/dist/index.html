@@ -82,9 +82,9 @@
         <select id="casos-cuenta-out"></select>
       </div>
 
-        <!-- 3b/3c: panel de escenarios (engine.js: rateScenarios/caseQuoteScenario;
-             filas Compra (origen) y Venta (destino), botones Mejor / 2% / Promedio
-             (par con VES) o Mejor / Promedio / Máximo (par sin VES)) -->
+        <!-- 3b/3e: panel de escenarios (engine.js: rateScenarios/caseQuoteScenario;
+             matriz compra (origen) y venta (destino) × Máximo/Mejor/Promedio/Mínimo
+             + tasas manuales opcionales con factor de seguridad) -->
       <div class="card" id="casos-escenario-card" hidden>
         <h2>Escenarios de tasa</h2>
         <div class="sc-row">
@@ -95,9 +95,13 @@
           <span class="sc-label" id="casos-esc-dest-label">Venta (destino)</span>
           <div id="casos-esc-dest" class="chips" role="group" aria-label="Escenario de venta (destino)"></div>
         </div>
+        <label for="casos-esc-origin-manual">Tasa manual compra (origen) — opcional</label>
+        <input id="casos-esc-origin-manual" type="number" inputmode="decimal" step="any" min="0" autocomplete="off" placeholder="Vacía = tasa del sistema">
+        <label for="casos-esc-dest-manual">Tasa manual venta (destino) — opcional</label>
+        <input id="casos-esc-dest-manual" type="number" inputmode="decimal" step="any" min="0" autocomplete="off" placeholder="Vacía = tasa del sistema">
         <label for="casos-esc-comision">Comisión del escenario (%)</label>
         <input id="casos-esc-comision" type="number" inputmode="decimal" step="any" min="0" max="100" autocomplete="off">
-        <p class="muted hint">Mejor / 2 % / Promedio (par con VES) o Mejor / Promedio / Máximo (par sin VES), por lado. El 2 % es el descuento de seguridad sobre la tasa del Bolívar (VES): solo aplica si el par toca VES. Máximo = mayor tasa del libro ejecutable en ese lado (no el mayor monto): en Compra es la tasa más cara y en Venta coincide con Mejor.</p>
+        <p class="muted hint">Matriz por lado: Máximo / Mejor / Promedio / Mínimo. Máximo (tercer anuncio) = tercer anuncio de la lista por defecto de cada plataforma (Binance y Bybit), tomando el mayor de los dos; puede quedar por debajo del Mejor porque el tercer anuncio no pasa por el filtro de ejecutabilidad. Mejor = mejor precio del libro a 40 US$ equivalentes (mínimo en compra / máximo en venta). Promedio = media de anuncios ejecutables; Mínimo = menor anuncio ejecutable. Si ingresas una tasa manual, ella manda sobre la del sistema y se muestra el factor de seguridad = (sistema − manual)/sistema × 100 por lado (negativo = recargo).</p>
         <div id="casos-escenario" aria-live="polite"></div>
       </div>
 
@@ -240,7 +244,9 @@
         </button>
         <a class="btn" href="https://github.com/afvelis/consutasas/actions/workflows/rates.yml"
            target="_blank" rel="noopener noreferrer">Forzar bot</a>
+        <button type="button" id="btn-matriz" class="btn" aria-expanded="false" aria-controls="ta-matriz">Matriz</button>
       </div>
+      <div id="ta-matriz" hidden></div>
       <div id="refresh-label-info" class="muted hint" hidden></div>
       <div id="ta-eurref"></div>
       <div id="ta-bcv" aria-label="Tasas BCV"></div>

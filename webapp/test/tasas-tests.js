@@ -4,6 +4,7 @@
  * (defer) y verifica: render de BCV, P2P (Binance/Bybit + variación vs BCV),
  * multi-par (spread/mejores/muestras/anuncios + top ad), detalle VES, EUR
  * referencial (incl. avisos por diffPct > 2 % y por eurRef ausente),
+ * matriz de pares × Máximo/Mejor/Promedio/Mínimo a 40 US$ eq (3e, sin 2 %),
  * diagnóstico/avisos, Comprobador (hash SHA-256 del archivo descargado,
  * momento UTC/Caracas, cadena de hashes del ledger, fuentes/HTTP/muestras),
  * feedback del botón Actualizar vía CT.onRefreshClick, snapshot ausente
@@ -254,6 +255,63 @@ function makeSandbox(payload) {
   check('detalle VES: totales, mejores, promedios P1/P2, spread, muestras',
     /Detalle P2P VES/.test(vd) && vd.indexOf('1.095,935') >= 0 && vd.indexOf('1.084,0342') >= 0 &&
     /Prom. compra p\u00e1gs\. 1\/2/.test(vd) && vd.indexOf('81 · 81') >= 0);
+
+  /* ---- 3e: Matriz de pares × Máximo/Mejor/Promedio/Mínimo (a 40 US$ eq) ---- */
+  const matrizAd = (price, platform) => ({ price: price, min: 0, max: 100000000, available: 1000000, platform: platform });
+  const matrizAdCorto = (price, platform, available) => ({ price: price, min: 0, max: 100000000, available: available, platform: platform });
+  const MATFIX = {
+    fixture: true,
+    schema: 'consutasas/rates.v1',
+    generatedAt: RECENT,
+    generatedAtCaracas: '2026-01-15T08:00:00-04:00',
+    pairs: {
+      VES: { code: 'VES', status: 'ok', compra: 1000, venta: 1100, ads: {
+        compra: [matrizAd(1080, 'binance'), matrizAd(1085, 'binance'), matrizAd(1090, 'binance'), matrizAd(1082, 'bybit'), matrizAd(1086, 'bybit'), matrizAd(1092, 'bybit')],
+        venta: [matrizAd(1101, 'binance'), matrizAd(1100, 'binance'), matrizAd(1099, 'binance'), matrizAd(1098, 'bybit'), matrizAd(1097, 'bybit'), matrizAd(1096, 'bybit')]
+      } },
+      PEN: { code: 'PEN', status: 'ok', compra: 3.5, venta: 3.7, ads: {
+        compra: [matrizAdCorto(3.00, 'binance', 30), matrizAd(3.40, 'binance'), matrizAd(3.42, 'binance'), matrizAd(3.44, 'binance'), matrizAd(3.41, 'bybit'), matrizAd(3.43, 'bybit'), matrizAd(3.46, 'bybit')],
+        venta: [matrizAd(3.70, 'binance'), matrizAd(3.68, 'binance'), matrizAd(3.66, 'binance'), matrizAd(3.72, 'bybit'), matrizAd(3.69, 'bybit'), matrizAd(3.67, 'bybit')]
+      } },
+      COP: { code: 'COP', status: 'ok', compra: 4000, venta: 4200, ads: {
+        compra: [matrizAd(4000, 'binance'), matrizAd(4010, 'binance'), matrizAd(4020, 'binance'), matrizAd(4005, 'bybit'), matrizAd(4015, 'bybit'), matrizAd(4030, 'bybit')],
+        venta: [matrizAd(4200, 'binance'), matrizAd(4180, 'binance'), matrizAd(4160, 'binance'), matrizAd(4190, 'bybit'), matrizAd(4170, 'bybit'), matrizAd(4150, 'bybit')]
+      } },
+      CLP: { code: 'CLP', status: 'ok', compra: 900, venta: 950 },
+      MXN: { code: 'MXN', status: 'ok', compra: 18, venta: 20 }
+    },
+    eurRef: FIXTURE.eurRef
+  };
+  const savedRatesMatriz = CT.S.rates, savedFxMatriz = CT.S.fx;
+  CT.S.rates = MATFIX;
+  CT.S.fx = engine.buildFx(MATFIX);
+  CT.renderTab('tasas');
+  const matrizBtn = documentStub.getElementById('btn-matriz');
+  documentStub.getElementById('ta-matriz').hidden = true; // estado inicial del HTML servido
+  (matrizBtn.__listeners['click'] || []).forEach(fn => fn());
+  const matrizHtml = htmlLog['ta-matriz'];
+  check('3e matriz: tabla pares × Máximo/Mejor/Promedio/Mínimo a 40 US$ eq, sin 2% (eliminado)',
+    /Matriz de tasas/.test(matrizHtml) && /<th[^>]*>M\u00e1ximo<\/th>/.test(matrizHtml) &&
+    /<th[^>]*>Mejor<\/th>/.test(matrizHtml) && /<th[^>]*>Promedio<\/th>/.test(matrizHtml) &&
+    /<th[^>]*>M\u00ednimo<\/th>/.test(matrizHtml) && matrizHtml.indexOf('2%') < 0 && matrizHtml.indexOf('conservative') < 0,
+    matrizHtml.slice(0, 300));
+  check('3e matriz: una fila por par registrado (7 pares default, cota A→B)',
+    (matrizHtml.match(/<tr><td>/g) || []).length === 7, matrizHtml.slice(0, 500));
+  const filaPENCOP = (matrizHtml.match(/<tr><td>PEN\/COP<\/td>([\s\S]*?)<\/tr>/) || [])[1] || '';
+  check('3e matriz: fila PEN/COP = tasa cruzada dest/origen de cada modo evaluado a 40 US$ eq',
+    filaPENCOP.indexOf('1.235,2941') >= 0 && // Mejor: dest venta 4.200 / orig compra 3,40
+    filaPENCOP.indexOf('1.202,3121') >= 0 && // Máximo: tercer anuncio por plataforma → 4.160 / 3,46 (mayor de los dos)
+    filaPENCOP.indexOf('1.218,3852') >= 0 && // Promedio: medias ejecutables → 4.175 / 3,4267 (redondeo del motor)
+    filaPENCOP.indexOf('1.220,5882') >= 0, // Mínimo: 4.150 / 3,40
+    filaPENCOP.slice(0, 400));
+  check('3e matriz: la celda Mejor respeta el filtro de 40 US$ eq (descarta ads con disp 30 < 40 → 3,40, no 3,00)',
+    filaPENCOP.indexOf('1.400,0000') < 0, matrizHtml.slice(0, 300));
+  (matrizBtn.__listeners['click'] || []).forEach(fn => fn());
+  check('3e matriz: toggle oculta y el botón vuelve a «Matriz»',
+    documentStub.getElementById('ta-matriz').hidden === true && matrizBtn.textContent === 'Matriz');
+  CT.S.rates = savedRatesMatriz;
+  CT.S.fx = savedFxMatriz;
+  CT.renderTab('tasas');
 
   /* ---- EUR referencial ---- */
   const eur = htmlLog['ta-eurref'];
