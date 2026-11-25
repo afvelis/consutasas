@@ -108,6 +108,7 @@ function makeEl(id) {
         cls = Array.from(set).join(' ');
         return on;
       },
+      contains(c) { return cls.split(/\s+/).indexOf(c) >= 0; },
       add(c) { el.classList.toggle(c, true); },
       remove(c) { el.classList.toggle(c, false); }
     },

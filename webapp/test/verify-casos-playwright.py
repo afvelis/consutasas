@@ -45,6 +45,13 @@ def esc_modes_of(btns):
 def esc_labels_of(btns, side, currency):
     return [b[1] for b in btns if side in b[1] and currency in b[1]]
 
+def grid_cols(page, sel):
+    col = page.eval_on_selector(sel, "e => getComputedStyle(e).gridTemplateColumns.trim()")
+    return 0 if col == 'none' else len(col.split(' '))
+
+def rect(page, sel):
+    return page.eval_on_selector(sel, "e => { const r = e.getBoundingClientRect(); return { x: r.x, w: r.width, right: r.right, top: r.top }; }")
+
 # ==================== modelo del snapshot (misma fórmula que el motor 3b) ====================
 # Réplica en Python de CTEngine.caseQuoteScenario (assets/engine.js) con los ads que la
 # app alimenta vía scenarioFx/adsArrOf (assets/app.js): el ORIGEN usa la lista `compra`
@@ -317,6 +324,51 @@ with sync_playwright() as p:
     page.on("pageerror", lambda e: page_errors.append(str(e)))
     page.on("requestfailed", lambda r: failed_reqs.append(r.url + " " + str(r.failure)))
     page.on("response", lambda r: failed_reqs.append(f"{r.status} {r.url}") if r.status >= 400 else None)
+
+    # ---------- 1) app completa, pestaña Casos ----------
+    # ---------- 0) Modo UI: default web + toggle “Modo Phone” + persistencia ----------
+    # web-first: sin localStorage ct_ui_mode la app arranca en modo web
+    # (sin body.phone-mode); el botón #btn-ui-mode intercambia y persiste.
+    page.goto(BASE + "/", wait_until="networkidle")
+    check("ui-mode: default web (sin body.phone-mode, botón “Modo Phone”, aria-pressed=false, ct_ui_mode ausente)",
+          page.evaluate("() => !document.body.classList.contains('phone-mode')") and
+          page.eval_on_selector("#btn-ui-mode", "e => e.textContent") == "Modo Phone" and
+          page.eval_on_selector("#btn-ui-mode", "e => e.getAttribute('aria-pressed')") == "false" and
+          page.evaluate("() => localStorage.getItem('ct_ui_mode')") is None, "")
+    # P2 ARIA del botón: nombre accesible = ACCIÓN coherente (a qué modo se salta).
+    check("ui-mode: ARIA del botón coherente (aria-label = acción 'Cambiar a modo Phone' en web)",
+          page.eval_on_selector("#btn-ui-mode", "e => e.getAttribute('aria-label')") == "Cambiar a modo Phone", "")
+    check("ui-mode web: nav superior estática (no fixed-bottom) y sin padding de barra inferior en body",
+          page.evaluate("getComputedStyle(document.querySelector('.bottomnav')).position") != "fixed" and
+          page.evaluate("parseFloat(getComputedStyle(document.body).paddingBottom)") < 30,
+          page.evaluate("getComputedStyle(document.querySelector('.bottomnav')).position"))
+    page.click("#btn-ui-mode")
+    page.wait_for_timeout(100)
+    check("ui-mode: toggle → body.phone-mode, botón “Modo Web”, aria-pressed=true, ct_ui_mode='phone'",
+          page.evaluate("() => document.body.classList.contains('phone-mode')") and
+          page.eval_on_selector("#btn-ui-mode", "e => e.textContent") == "Modo Web" and
+          page.eval_on_selector("#btn-ui-mode", "e => e.getAttribute('aria-pressed')") == "true" and
+          page.eval_on_selector("#btn-ui-mode", "e => e.getAttribute('aria-label')") == "Cambiar a modo Web" and
+          page.evaluate("() => localStorage.getItem('ct_ui_mode')") == "phone", "")
+    page.reload(wait_until="networkidle")
+    check("ui-mode: phone-mode persiste tras recargar (restaurado al init desde ct_ui_mode)",
+          page.evaluate("() => document.body.classList.contains('phone-mode')") and
+          page.eval_on_selector("#btn-ui-mode", "e => e.getAttribute('aria-pressed')") == "true", "")
+    page.click("#btn-ui-mode")
+    page.wait_for_timeout(100)
+    check("ui-mode: segunda pulsación vuelve a web (clase fuera, botón “Modo Phone”, aria-pressed=false, ct_ui_mode='web')",
+          page.evaluate("() => !document.body.classList.contains('phone-mode')") and
+          page.eval_on_selector("#btn-ui-mode", "e => e.textContent") == "Modo Phone" and
+          page.eval_on_selector("#btn-ui-mode", "e => e.getAttribute('aria-pressed')") == "false" and
+          page.eval_on_selector("#btn-ui-mode", "e => e.getAttribute('aria-label')") == "Cambiar a modo Phone" and
+          page.evaluate("() => localStorage.getItem('ct_ui_mode')") == "web", "")
+
+    # P2: el toast se separa de la barra (24px web / 84px phone, sobre la nav fija).
+    page.evaluate("() => CT.toast('prueba toast')")
+    page.wait_for_timeout(100)
+    check("toast: bottom 24px en modo web (separado de la barra, sin nav fija)",
+          page.eval_on_selector("#toast", "e => getComputedStyle(e).bottom") == "24px",
+          page.eval_on_selector("#toast", "e => getComputedStyle(e).bottom") if page.eval_on_selector("#toast", "e => !e.hidden") else "toast oculto/ausente")
 
     # ---------- 1) app completa, pestaña Casos ----------
     page.goto(BASE + "/", wait_until="networkidle")
@@ -602,23 +654,89 @@ with sync_playwright() as p:
     page.wait_for_timeout(300)
 
     # ---------- 2b-3f) Detalle discreto + layout ----------
+    # ---------- 2b-3f) Detalle discreto + layout (WEB es la base; 1280 default) ----------
     check("3f: el párrafo largo va dentro de <details><summary>Detalle</summary> (no siempre visible)",
           page.eval_on_selector_all("#casos-escenario-card details.hint-details",
                                     "els => els.map(e => e.querySelector('summary').textContent.trim())") == ["Detalle"] and
           "Matriz por lado" in page.eval_on_selector("#casos-escenario-card details.hint-details", "e => e.textContent"), "")
-    check("3f layout: main centrado max-width 760px y sin scroll horizontal",
-          page.evaluate("getComputedStyle(document.querySelector('main')).maxWidth") == "760px" and
+    # WEB (modo default, sin phone-mode): main ancho 1280, nav superior y inputs
+    # usables; sin scroll horizontal de página.
+    check("3f layout web@1280: main centrado max-width 1280px y sin scroll horizontal",
+          page.evaluate("getComputedStyle(document.querySelector('main')).maxWidth") == "1280px" and
           page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"),
           page.evaluate("getComputedStyle(document.querySelector('main')).maxWidth"))
-    check("3f layout: los inputs del caso no van a todo el ancho (max-width 220px)",
-          page.evaluate("getComputedStyle(document.getElementById('casos-monto')).maxWidth") == "220px" and
-          page.evaluate("getComputedStyle(document.getElementById('casos-obs')).maxWidth") == "220px",
+    check("3f layout web@1280: inputs del caso usables (max-width 480px, no los 220 del modo phone)",
+          page.evaluate("getComputedStyle(document.getElementById('casos-monto')).maxWidth") == "480px" and
+          page.evaluate("getComputedStyle(document.getElementById('casos-obs')).maxWidth") == "480px",
           page.evaluate("getComputedStyle(document.getElementById('casos-monto')).maxWidth"))
+    check("3f layout web@1280: nav superior estática (no fixed-bottom) y sin padding de barra en body",
+          page.evaluate("getComputedStyle(document.querySelector('.bottomnav')).position") != "fixed" and
+          page.evaluate("parseFloat(getComputedStyle(document.body).paddingBottom)") < 30, "")
+
+    # ---------- 1b) composición desktop real en web@1280 (Casos + nav alineada) ----------
+    check("1b web@1280: nav alineada al contenido (padding lateral 24px igual a main)",
+          page.evaluate("getComputedStyle(document.querySelector('.bottomnav')).paddingLeft") == "24px" and
+          page.evaluate("getComputedStyle(document.querySelector('main')).paddingLeft") == "24px", "")
+    check("1b web@1280: #tab-casos en grid de 2 columnas (no columna estirada)",
+          grid_cols(page, "#tab-casos") == 2,
+          page.eval_on_selector("#tab-casos", "e => getComputedStyle(e).gridTemplateColumns"))
+    chips_rect = rect(page, "#tab-casos > .card:first-child")
+    form_rect = rect(page, "#tab-casos > .card:nth-child(2)")
+    esc_rect = rect(page, "#casos-escenario-card")
+    res_rect = rect(page, "#casos-resultado")
+    check("1b web@1280: pares/chips a todo el ancho (fila 1) y formulario a la izquierda, escenarios/resultado a la derecha",
+          chips_rect["w"] > 1100 and form_rect["w"] < 700 and
+          form_rect["x"] < esc_rect["x"] and res_rect["right"] <= chips_rect["right"] + 2 and
+          res_rect["w"] < 700,
+          f"chips={chips_rect} form={form_rect} esc={esc_rect} res={res_rect}")
+    page.screenshot(path="/tmp/shot-1b-casos-1280.png", full_page=True)
+
+    # ---------- 1b) composición desktop: Cuentas / Balance / Histórico / Tasas ----------
+    page.click("button[data-tab='cuentas']")
+    page.wait_for_timeout(300)
+    cu_list = rect(page, "#cuentas-lista"); cu_form = rect(page, "#tab-cuentas > .card")
+    check("1b web@1280: #tab-cuentas en grid de 2 columnas (lista izquierda, formularios derecha, avisos a todo el ancho)",
+          grid_cols(page, "#tab-cuentas") == 2 and
+          page.eval_on_selector("#cuentas-avisos", "e => getComputedStyle(e).gridColumnStart") == "1" and
+          cu_list["x"] < cu_form["x"] and cu_form["w"] < 700,
+          f"cols={grid_cols(page, '#tab-cuentas')} lista={cu_list} form={cu_form}")
+    page.screenshot(path="/tmp/shot-1b-cuentas-1280.png", full_page=True)
+    page.click("button[data-tab='balance']")
+    page.wait_for_timeout(300)
+    bal_cards = page.eval_on_selector_all("#balance-out > .card",
+        "els => els.map(e => { const r = e.getBoundingClientRect(); return { x: r.x, w: r.width, top: r.top }; })")
+    check("1b web@1280: #balance-out en grid de 2 columnas (resumen arriba-izquierda, distribución a la derecha)",
+          grid_cols(page, "#balance-out") == 2 and len(bal_cards) >= 2 and
+          bal_cards[0]["x"] < bal_cards[1]["x"] and all(c["w"] < 700 for c in bal_cards),
+          f"cols={grid_cols(page, '#balance-out')} cards={bal_cards}")
+    page.screenshot(path="/tmp/shot-1b-balance-1280.png", full_page=True)
+    page.click("button[data-tab='historico']")
+    page.wait_for_timeout(300)
+    hf = rect(page, "#tab-historico > .card:first-child"); hl = rect(page, "#hist-lista")
+    check("1b web@1280: histórico con filtros densos (mitad) y lista a todo el ancho",
+          grid_cols(page, "#tab-historico") == 2 and hf["w"] < 700 and hl["w"] > 1100,
+          f"cols={grid_cols(page, '#tab-historico')} filtros={hf} lista={hl}")
+    page.screenshot(path="/tmp/shot-1b-historico-1280.png", full_page=True)
+    page.click("button[data-tab='tasas']")
+    page.wait_for_timeout(500)
+    mlt = rect(page, "#ta-multipares")
+    tcols = grid_cols(page, "#tab-tasas")
+    check("1b web@1280: #tab-tasas en grid de 2–3 columnas con multi-pares a todo el ancho (scroll interno intacto)",
+          2 <= tcols <= 3 and mlt["w"] > 1100,
+          f"cols={tcols} multi={mlt}")
+    check("1b web@1280: pares multi-fiat en grid interno de 3 columnas y comprobador en 2",
+          grid_cols(page, "#ta-multipares") == 3, str(grid_cols(page, "#ta-multipares")))
 
     # ---------- 2c) Tasas: Matriz 3g (tasas laterales por US$, sin comisión) ----------
     page.click("button[data-tab='tasas']")
     page.click("#btn-matriz")
     page.wait_for_timeout(300)
+    # 1b: matriz a todo el ancho del contenido, con scroll interno (.matriz-scroll).
+    mtz = rect(page, "#ta-matriz")
+    check("1b web@1280: matriz a todo el ancho (> 1100px) con scroll interno en .matriz-scroll",
+          mtz["w"] > 1100 and
+          page.eval_on_selector("#ta-matriz .matriz-scroll", "e => getComputedStyle(e).overflowX") == "auto",
+          f"matriz={mtz}")
     mrows = page.eval_on_selector_all(
         "#ta-matriz .matriz-table tbody tr",
         "trs => trs.map(tr => Array.from(tr.children).map(td => td.textContent.trim()))")
@@ -688,9 +806,78 @@ with sync_playwright() as p:
           "Tasa lateral por 1 US$" in page.eval_on_selector("#ta-matriz details.hint-details", "e => e.textContent"), "")
     page.screenshot(path="/tmp/shot-matriz.png", full_page=True)
 
-    # ---------- 2c-3f) P1 móvil: la matriz scrollea dentro de su caja (375px) ----------
+    # ---------- 2c-3f) WEB amplio: 1440px sigue acotado a 1280 y sin scroll horizontal ----------
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.wait_for_timeout(200)
+    sc1440 = page.evaluate("""() => {
+      const d = document.documentElement;
+      const box = document.querySelector('#ta-matriz .matriz-scroll');
+      const cell = document.querySelector('#ta-matriz .matriz-table tbody tr:last-child td:last-child');
+      return { scrollWidth: d.scrollWidth, innerWidth: window.innerWidth,
+               mainMax: getComputedStyle(document.querySelector('main')).maxWidth,
+               navPos: getComputedStyle(document.querySelector('.bottomnav')).position,
+               boxOverflowX: box ? getComputedStyle(box).overflowX : null,
+               boxScrollable: box ? (box.scrollWidth > box.clientWidth) : null,
+               lastRight: cell ? cell.getBoundingClientRect().right : null };
+    }""")
+    MATRIZ_1440 = json.dumps(sc1440)
+    print(f"[matriz 1440 web] {MATRIZ_1440}")
+    page.screenshot(path="/tmp/shot-matriz-1440.png", full_page=True)
+    # WEB 1440: base visual (main 1280, nav superior), matriz NO desborda la
+    # página (scrollea dentro de .matriz-scroll si no cabe) — en 1440 la tabla
+    # cabe sin scroll interno pero la caja debe seguir definida con overflow auto.
+    check("3f web 1440: main acotado a 1280px, nav superior (no fixed-bottom) y sin scroll horizontal de página",
+          sc1440["mainMax"] == "1280px" and sc1440["navPos"] != "fixed" and
+          sc1440["scrollWidth"] <= sc1440["innerWidth"] + 1, MATRIZ_1440)
+    check("3f web 1440: matriz en su caja (overflow-x auto y última columna dentro del viewport)",
+          sc1440["boxOverflowX"] == "auto" and sc1440["lastRight"] is not None and
+          sc1440["lastRight"] <= sc1440["innerWidth"] + 1, MATRIZ_1440)
+
+    # ---------- P2: 375px en modo WEB (antes de forzar phone) ----------
+    # La vista web también debe funcionar en ventana estrecha: nav superior,
+    # sin scroll horizontal y grids de escritorio desactivados (< 720px).
     page.set_viewport_size({"width": 375, "height": 800})
     page.wait_for_timeout(200)
+    page.click("button[data-tab='casos']")
+    page.wait_for_timeout(300)
+    sc375w = page.evaluate("""() => ({
+      phone: document.body.classList.contains('phone-mode'),
+      navPos: getComputedStyle(document.querySelector('.bottomnav')).position,
+      mainMax: getComputedStyle(document.querySelector('main')).maxWidth,
+      scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth,
+      casosDisplay: getComputedStyle(document.getElementById('tab-casos')).display,
+      casosCols: getComputedStyle(document.getElementById('tab-casos')).gridTemplateColumns.trim(),
+      montoMax: getComputedStyle(document.getElementById('casos-monto')).maxWidth }) """)
+    check("1b web@375 (antes de forzar phone): sigue en modo web (sin phone-mode, nav superior, main 1280) y sin scroll horizontal",
+          not sc375w["phone"] and sc375w["navPos"] != "fixed" and sc375w["mainMax"] == "1280px" and
+          sc375w["scrollWidth"] <= sc375w["innerWidth"] + 1,
+          json.dumps(sc375w))
+    check("1b web@375: grids de escritorio desactivados bajo 720px (columna única) e inputs ≤ 480px",
+          sc375w["casosDisplay"] == "block" and (sc375w["casosCols"] == "none" or " " not in sc375w["casosCols"]) and
+          sc375w["montoMax"] == "480px", json.dumps(sc375w))
+    page.click("button[data-tab='tasas']")
+    page.wait_for_timeout(500)
+
+    # ---------- 2c-3f) P1 móvil (phone-mode): la matriz scrollea dentro de su caja (375px) ----------
+    # PRUEBA del modo phone en teléfono real: 375px + body.phone-mode (botón
+    # “Modo Phone”). El documento sigue sin scroll horizontal; la matriz solo
+    # scrollea dentro de .matriz-scroll.
+    page.set_viewport_size({"width": 375, "height": 800})
+    if not page.evaluate("() => document.body.classList.contains('phone-mode')"):
+        page.click("#btn-ui-mode")
+    page.wait_for_timeout(200)
+    check("3f phone-mode 375px: main 760px, inputs 220px, nav fija abajo y padding de barra en body",
+          page.evaluate("getComputedStyle(document.querySelector('main')).maxWidth") == "760px" and
+          page.evaluate("getComputedStyle(document.getElementById('casos-monto')).maxWidth") == "220px" and
+          page.evaluate("getComputedStyle(document.querySelector('.bottomnav')).position") == "fixed" and
+          page.evaluate("(getComputedStyle(document.querySelector('.bottomnav')).bottom == '0px')") and
+          page.evaluate("parseFloat(getComputedStyle(document.body).paddingBottom)") >= 76,
+          page.evaluate("getComputedStyle(document.querySelector('main')).maxWidth"))
+    # 1b: en phone-mode los grids de escritorio NO aplican a ningún ancho.
+    check("1b phone-mode 375px: composición desktop apagada (#tab-casos en columna, sin grid)",
+          page.evaluate("getComputedStyle(document.getElementById('tab-casos')).display") != "grid" and
+          page.evaluate("getComputedStyle(document.getElementById('tab-casos')).gridTemplateColumns.trim()") in ("none", "") and
+          page.evaluate("getComputedStyle(document.getElementById('balance-out')).display") != "grid", "")
     sc375 = page.evaluate("""() => {
       const d = document.documentElement;
       const box = document.querySelector('#ta-matriz .matriz-scroll');
@@ -712,7 +899,23 @@ with sync_playwright() as p:
           sc375["lastRight"] <= sc375["innerWidth"] + 1,
           MATRIZ_375)
     page.set_viewport_size({"width": 1280, "height": 720})
+    page.click("#btn-ui-mode")  # volver al modo web base para el resto de las pruebas
     page.wait_for_timeout(200)
+    check("ui-mode: restaurado web@1280 tras el bloque phone 375 (sin body.phone-mode, ct_ui_mode='web')",
+          page.evaluate("() => !document.body.classList.contains('phone-mode')") and
+          page.evaluate("() => localStorage.getItem('ct_ui_mode')") == "web", "")
+    # P2: toast phone → separado de la barra fija (84px); web → 24px.
+    page.evaluate("() => CT.toast('prueba toast')")
+    page.wait_for_timeout(50)
+    tb_web = page.eval_on_selector("#toast", "e => getComputedStyle(e).bottom")
+    page.click("#btn-ui-mode")
+    page.evaluate("() => CT.toast('prueba toast')")
+    page.wait_for_timeout(50)
+    tb_phone = page.eval_on_selector("#toast", "e => getComputedStyle(e).bottom")
+    page.click("#btn-ui-mode")  # volver a web para el resto de las pruebas
+    page.wait_for_timeout(100)
+    check("toast: bottom 24px web / 84px phone (sobre la barra fija sin taparla)",
+          tb_web == "24px" and tb_phone == "84px", f"web={tb_web} phone={tb_phone}")
 
     page.click("#btn-matriz")  # cierra la matriz
 

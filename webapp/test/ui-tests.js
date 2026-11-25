@@ -88,6 +88,7 @@ function makeEl(id) {
         cls = Array.from(set).join(' ');
         return on;
       },
+      contains(c) { return cls.split(/\s+/).indexOf(c) >= 0; },
       add(c) { el.classList.toggle(c, true); },
       remove(c) { el.classList.toggle(c, false); }
     },
@@ -1239,11 +1240,73 @@ try {
     indexSrc.indexOf('<details class="hint-details"><summary>Detalle</summary>', idxCard) > idxCard &&
     /<\/details>/.test(indexSrc.slice(indexSrc.indexOf('<details class="hint-details"', idxCard))),
     indexSrc.slice(idxCard, idxCard + 300));
-  check('3f layout: contenido centrado ~760px (main max-width) y simétrico (margin auto)',
-    /max-width:\s*760px/.test(stylesSrc) && /margin:\s*0 auto/.test(stylesSrc));
-  check('3f layout: inputs compactos (max-width 180-240px), nunca a todo el ancho',
-    /input, select, textarea\s*\{[^}]*max-width:\s*220px/.test(stylesSrc),
+  check('3f layout: modo phone conserva main centrado ~760px (body.phone-mode) y simétrico (margin auto)',
+    /body\.phone-mode main\s*\{[^}]*max-width:\s*760px/.test(stylesSrc) &&
+    /max-width:\s*1280px/.test(stylesSrc) && /margin:\s*0 auto/.test(stylesSrc));
+  check('3f layout: inputs compactos en phone-mode (220px) y usables en web (base >220, nunca full-bleed)',
+    /input, select, textarea\s*\{[^}]*max-width:\s*480px/.test(stylesSrc) &&
+    /body\.phone-mode input, body\.phone-mode select, body\.phone-mode textarea\s*\{[^}]*max-width:\s*220px/.test(stylesSrc),
     stylesSrc.slice(stylesSrc.indexOf('input, select, textarea'), stylesSrc.indexOf('input, select, textarea') + 200));
+  check('index.html: botón Modo Phone en topbar con aria-pressed inicial (sin inline, el estado lo fija app.js)',
+    /<button type="button" id="btn-ui-mode"[^>]*aria-pressed="false"[^>]*>Modo Phone<\/button>/.test(indexSrc) &&
+    !/btn-ui-mode"[^>]*\son[a-z]+=/.test(indexSrc));
+  check('ui-mode: ct_ui_mode en app.js con default web (readUiMode devuelve web sin registro) y aria-pressed/texto actualizados por JS',
+    /LS_UI_MODE = 'ct_ui_mode'/.test(appSrc) &&
+    /return localStorage\.getItem\(LS_UI_MODE\) === 'phone' \? 'phone' : 'web'/.test(appSrc) &&
+    /'Modo Phone'/.test(appSrc) && /'Modo Web'/.test(appSrc) &&
+    /classList\.toggle\('phone-mode', phone\)/.test(appSrc) &&
+    /btn\.setAttribute\('aria-pressed', phone \? 'true' : 'false'\)/.test(appSrc));
+  check('P2 ui-mode: nombre accesible del botón = acción coherente (aria-label “Cambiar a modo …” fijado por JS y en el HTML inicial)',
+    /btn\.setAttribute\('aria-label', phone \? 'Cambiar a modo Web' : 'Cambiar a modo Phone'\)/.test(appSrc) &&
+    /aria-label="Cambiar a modo Phone"/.test(indexSrc));
+  check('P2 init: bindUiMode/applyUiMode corren ANTES del return por engine ausente (layout correcto incluso con motor roto)',
+    (appSrc.indexOf('bindUiMode();') >= 0 && appSrc.indexOf('applyUiMode(readUiMode());') >= 0 &&
+     appSrc.indexOf('applyUiMode(readUiMode());') < appSrc.indexOf('if (!requireEngine()) return;')) ||
+    /async function init\(\)\s*\{[^}]*bindUiMode\(\);\s*applyUiMode\(readUiMode\(\)\);\s*if \(!requireEngine\(\)\) return;/.test(appSrc),
+    'no se aplica el modo UI antes del return');
+  check('P2 toast: bottom depende del modo (24px web / 84px phone) con reposicionado en applyUiMode (placeToast)',
+    /function toastBottomPx\(\)/.test(appSrc) &&
+    /contains\('phone-mode'\) \? 84 : 24/.test(appSrc) &&
+    /bottom:' \+ toastBottomPx\(\) \+ 'px;transform:translateX\(-50%\);/.test(appSrc) &&
+    /function placeToast\(\)/.test(appSrc) && appSrc.indexOf('placeToast();') >= 0);
+  const uiBtn = sandbox.document.getElementById('btn-ui-mode');
+  CT.applyUiMode('phone');
+  check('ui-mode: applyUiMode(phone) deja aria-label “Cambiar a modo Web” + aria-pressed=true (label/acción coherentes)',
+    uiBtn.__attrs['aria-label'] === 'Cambiar a modo Web' && uiBtn.__attrs['aria-pressed'] === 'true' &&
+    uiBtn.textContent === 'Modo Web', JSON.stringify(uiBtn.__attrs));
+  CT.applyUiMode('web');
+  check('ui-mode: applyUiMode(web) restablece “Cambiar a modo Phone” + aria-pressed=false',
+    uiBtn.__attrs['aria-label'] === 'Cambiar a modo Phone' && uiBtn.__attrs['aria-pressed'] === 'false' &&
+    uiBtn.textContent === 'Modo Phone', JSON.stringify(uiBtn.__attrs));
+  check('P2 nav web: padding lateral de .bottomnav (24px) alineado con main (24px)',
+    /\.bottomnav\s*\{[^}]*padding:\s*6px 24px 10px/.test(stylesSrc) &&
+    /main\s*\{[^}]*padding:\s*14px 24px 32px/.test(stylesSrc),
+    stylesSrc.slice(stylesSrc.indexOf('.bottomnav') - 20, stylesSrc.indexOf('.bottomnav') + 240));
+  check('P2 css: sin justify-content:stretch (inválido en flexbox)',
+    !/justify-content:\s*stretch\s*;/.test(stylesSrc));
+  /* ---- 1b: composición desktop real por pestaña (web-only) ---- */
+  check('1b layout: [hidden] con !important (el display:grid de autor no puede mantener visible una pestaña oculta)',
+    /\[hidden\]\s*\{\s*display:\s*none !important;/.test(stylesSrc));
+  check('1b layout: grids de escritorio solo en ≥720px y con body:not(.phone-mode) (phone intacto a cualquier ancho)',
+    /@media \(min-width: 720px\)\s*\{[^@]*body:not\(\.phone-mode\) #tab-casos/.test(stylesSrc) &&
+    /@media \(min-width: 1100px\)\s*\{\s*body:not\(\.phone-mode\) #tab-tasas\s*\{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);\s*\}\s*\}/.test(stylesSrc));
+  check('1b layout Casos: pares/chips a todo el ancho (1/-1) y formulario izquierda / escenarios+resultado derecha',
+    /body:not\(\.phone-mode\) #tab-casos > \.card:first-child\s*\{\s*grid-column: 1 \/ -1; min-width: 0;\s*\}/.test(stylesSrc) &&
+    /body:not\(\.phone-mode\) #casos-escenario-card,\s*\n\s*body:not\(\.phone-mode\) #casos-resultado\s*\{\s*grid-column: 2; min-width: 0;\s*\}/.test(stylesSrc));
+  check('1b layout Cuentas: lista en columna 1 y formularios en columna 2 (avisos a todo el ancho)',
+    /body:not\(\.phone-mode\) #cuentas-lista\s*\{\s*grid-column: 1; grid-row: 2; min-width: 0;\s*\}/.test(stylesSrc) &&
+    /body:not\(\.phone-mode\) #tab-cuentas > \.card\s*\{\s*grid-column: 2; min-width: 0;\s*\}/.test(stylesSrc));
+  check('1b layout Balance: resumen/activos/pasivos/distribución en grid 2 columnas',
+    /body:not\(\.phone-mode\) #balance-out\s*\{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);\s*\}/.test(stylesSrc));
+  check('1b layout Histórico: filtros densos (col 1) + lista a todo el ancho (1/-1)',
+    /body:not\(\.phone-mode\) #tab-historico > \.card:first-child\s*\{\s*grid-column: 1; grid-row: 1; min-width: 0;\s*\}/.test(stylesSrc) &&
+    /body:not\(\.phone-mode\) #hist-lista\s*\{\s*grid-column: 1 \/ -1; grid-row: 2; min-width: 0;\s*\}/.test(stylesSrc));
+  check('1b layout Tasas: matriz a todo el ancho (1/-1), multi-pares en grid interno de 3 columnas y comprobador en 2',
+    /body:not\(\.phone-mode\) #ta-matriz,\s*\n\s*body:not\(\.phone-mode\) #refresh-label-info,\s*\n\s*body:not\(\.phone-mode\) #ta-vesdetalle,\s*\n\s*body:not\(\.phone-mode\) #ta-diagnostico\s*\{\s*grid-column: 1 \/ -1; min-width: 0;\s*\}/.test(stylesSrc) &&
+    /body:not\(\.phone-mode\) #ta-multipares\s*\{[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/.test(stylesSrc) &&
+    /body:not\(\.phone-mode\) #tab-comprobador-panel\s*\{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(stylesSrc));
+  check('1b layout: NINGUNA regla de composición toca body.phone-mode (el modo phone no recibe grids ni ítems estirados)',
+    !/body\.phone-mode[^{}\n]*\{[^}]*grid-template-columns/.test(stylesSrc));
   check('3f layout: rejilla de formularios 2 columnas en desktop (≥640px) y 1 en móvil',
     /.form2col\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/.test(stylesSrc) &&
     /@media \(min-width: 640px\)\s*\{\s*\.form2col \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/.test(stylesSrc));

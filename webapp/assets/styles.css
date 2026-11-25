@@ -1,4 +1,9 @@
-/* ConsuTasas — mobile-first. Sin scroll horizontal de página. */
+/* ConsuTasas — web-first responsive: la base visual es WEB (main 1280, nav
+ * superior estática, inputs anchos, sin padding de barra). `body.phone-mode`
+ * reactiva el modo móvil (bottom nav fija, main 760, inputs 220). Sin scroll
+ * horizontal de página en ningún modo (html,body overflow-x:hidden; la matriz
+ * scrollea dentro de su caja .matriz-scroll). El toggle vive en #btn-ui-mode
+ * (assets/app.js) y persiste en `ct_ui_mode`; default web. */
 :root {
   --bg: #0e1116;
   --card: #171c24;
@@ -31,6 +36,9 @@ body {
   font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
   font-size: 16px;
   line-height: 1.45;
+}
+/* Modo phone: reserva el espacio de la barra inferior fija. En web no hay barra. */
+body.phone-mode {
   padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
 }
 
@@ -70,17 +78,27 @@ body {
 .badge-bad  { background: rgba(239,68,68,.16);  color: var(--bad); }
 .badge-wait { background: rgba(147,161,180,.15); color: var(--muted); }
 
+/* WEB: escritorio hasta 1280, cards/grids más densos. */
 main {
-  padding: 12px 14px 24px;
+  padding: 14px 24px 32px;
   width: 100%;
-  max-width: 760px;
+  max-width: 1280px;
   margin: 0 auto;
+}
+/* PHONE: layout telefónico histórico. */
+body.phone-mode main {
+  padding: 12px 14px 24px;
+  max-width: 760px;
 }
 
 .card {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 10px;
+}
+body.phone-mode .card {
   padding: 14px;
   margin-bottom: 12px;
 }
@@ -189,7 +207,9 @@ main {
 @media (min-width: 480px) {
   .sc-row { flex-direction: row; align-items: center; gap: 12px; }
 }
-.btn-big { width: 100%; margin-top: 10px; }
+/* WEB: CTA acotada (no a todo el ancho de 1280). PHONE: a todo el ancho. */
+.btn-big { margin-top: 10px; }
+body.phone-mode .btn-big { width: 100%; }
 .btn-small { min-height: 40px; padding: 6px 12px; font-size: 0.85rem; }
 .btn-danger { color: var(--bad); border-color: rgba(239,68,68,.4); }
 .btn[disabled] { opacity: .5; cursor: not-allowed; }
@@ -221,9 +241,10 @@ label:first-child { margin-top: 0; }
 legend { padding: 0 4px; }
 label.inlinelab { margin: 0; }
 
+/* WEB: inputs usables a lo ancho del panel (nunca full-bleed). */
 input, select, textarea {
   width: 100%;
-  max-width: 220px;
+  max-width: 480px;
   min-height: 48px;
   padding: 10px 12px;
   border-radius: 12px;
@@ -232,6 +253,10 @@ input, select, textarea {
   color: var(--text);
   font-size: 1.05rem;
   font-family: inherit;
+}
+/* PHONE: controles compactos (3f). */
+body.phone-mode input, body.phone-mode select, body.phone-mode textarea {
+  max-width: 220px;
 }
 input:focus, select:focus {
   outline: none;
@@ -346,31 +371,64 @@ details summary { cursor: pointer; color: var(--accent); font-size: 0.88rem; }
   margin: 2px 0 8px;
 }
 
-/* Barra de navegación inferior (phone-first) */
+/* WEB: navegación superior estática (no bottom), centrada en pestañas tipo pill. */
 .bottomnav {
+  position: static;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  /* WEB: padding lateral igual al de main (24px) para que las pestañas
+   * queden alineadas con el contenido. */
+  max-width: 1280px;
+  margin: 6px auto 12px;
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  padding: 6px 24px 10px;
+}
+.navbtn {
+  flex: 0 1 auto;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card2);
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 6px 16px;
+}
+.navbtn.active { color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
+
+/* Modo phone: la MISMA nav vuelve a la barra fija inferior de pestañas. */
+body.phone-mode .bottomnav {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
+  top: auto;
   z-index: 20;
-  display: flex;
+  flex-wrap: nowrap;
+  /* P2: justify-content:stretch no existe en flexbox; los .navbtn con
+   * flex:1 1 25% ocupan el ancho por sí mismos. */
+  gap: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 env(safe-area-inset-bottom, 0px);
   background: var(--card);
   border-top: 1px solid var(--line);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-bottom: none;
 }
-.navbtn {
+body.phone-mode .navbtn {
   flex: 1 1 25%;
   min-height: 56px;
   border: none;
+  border-radius: 0;
   background: transparent;
-  color: var(--muted);
   font-size: 0.85rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
   padding: 6px 2px;
 }
-.navbtn.active { color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
 
 .chklinks { margin: 12px 0; word-break: break-word; }
 .chklinks a { color: var(--accent); }
@@ -464,4 +522,96 @@ details summary { cursor: pointer; color: var(--accent); font-size: 0.88rem; }
 @media (max-width: 639px) {
   .matriz-table { font-size: 0.8rem; }
   .matriz-table th, .matriz-table td { padding: 4px; }
+}
+
+/* ============ 1b: composición desktop real por pestaña ============
+ * WEB (body:not(.phone-mode), viewport >= 720px): grids reales por pestaña.
+ * PHONE (body.phone-mode) no recibe NINGUNA regla de esta sección: el layout
+ * telefónico (columna única, main 760, inputs 220) queda intacto a cualquier
+ * ancho. [hidden] !important evita que un display:grid de autor (con mayor
+ * especificidad que la hoja de usuario /agentesa) mantenga visible una
+ * pestaña oculta. */
+[hidden] { display: none !important; }
+
+@media (min-width: 720px) {
+  body:not(.phone-mode) #tab-casos,
+  body:not(.phone-mode) #tab-cuentas,
+  body:not(.phone-mode) #tab-historico,
+  body:not(.phone-mode) #tab-tasas,
+  body:not(.phone-mode) #balance-out {
+    display: grid;
+    align-items: start;
+    gap: 12px;
+    min-width: 0;
+  }
+  body:not(.phone-mode) #tab-casos,
+  body:not(.phone-mode) #tab-cuentas,
+  body:not(.phone-mode) #tab-historico,
+  body:not(.phone-mode) #tab-tasas,
+  body:not(.phone-mode) #balance-out {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* El gap maneja el espaciado: sin margen residual de .card (.actions). */
+  body:not(.phone-mode) #tab-casos > *,
+  body:not(.phone-mode) #tab-cuentas > *,
+  body:not(.phone-mode) #tab-historico > *,
+  body:not(.phone-mode) #tab-tasas > *,
+  body:not(.phone-mode) #balance-out > *,
+  body:not(.phone-mode) #tab-comprobador-panel > *,
+  body:not(.phone-mode) #ta-multipares > * {
+    margin-bottom: 0;
+  }
+
+  /* CASOS (1): pares/chips a todo el ancho (fila 1); formulario “Caso”
+   * en la columna izquierda; escenarios + resultado en la derecha. */
+  body:not(.phone-mode) #tab-casos > .card:first-child { grid-column: 1 / -1; min-width: 0; }
+  body:not(.phone-mode) #casos-escenario-card,
+  body:not(.phone-mode) #casos-resultado { grid-column: 2; min-width: 0; }
+
+  /* CUENTAS (2): lista a la izquierda; formularios (editar/añadir) a la
+   * derecha; avisos a todo el ancho. */
+  body:not(.phone-mode) #cuentas-avisos { grid-column: 1 / -1; min-width: 0; }
+  body:not(.phone-mode) #cuentas-lista { grid-column: 1; grid-row: 2; min-width: 0; }
+  body:not(.phone-mode) #tab-cuentas > .card { grid-column: 2; min-width: 0; }
+
+  /* BALANCE (3): resumen / activos / pasivos / distribución fluyen en las
+   * 2 columnas (Resumen queda arriba-izquierda, Distribución a la derecha). */
+  body:not(.phone-mode) #balance-out { min-width: 0; }
+
+  /* HISTÓRICO (4): filtros densos (mitad) junto a estadísticas; lista de
+   * movimientos y “Mes y respaldo” a todo el ancho. */
+  body:not(.phone-mode) #tab-historico > .card:first-child { grid-column: 1; grid-row: 1; min-width: 0; }
+  body:not(.phone-mode) #hist-estadisticas { grid-column: 2; grid-row: 1; min-width: 0; }
+  body:not(.phone-mode) #hist-lista { grid-column: 1 / -1; grid-row: 2; min-width: 0; }
+  body:not(.phone-mode) #tab-historico > .card:last-child { grid-column: 1 / -1; grid-row: 3; min-width: 0; }
+
+  /* TASAS (5): acciones, matriz (scroll interno de .matriz-scroll intacto),
+   * hint, detalle VES y diagnóstico a todo el ancho; el resto de cards fluye
+   * en las columnas; pares multi-fiat con grid interno de 3 columnas. */
+  body:not(.phone-mode) #tab-tasas > .actions,
+  body:not(.phone-mode) #ta-matriz,
+  body:not(.phone-mode) #refresh-label-info,
+  body:not(.phone-mode) #ta-vesdetalle,
+  body:not(.phone-mode) #ta-diagnostico { grid-column: 1 / -1; min-width: 0; }
+  body:not(.phone-mode) #ta-multipares {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    min-width: 0;
+  }
+  /* Comprobador (panel desplegable): origen/fuentes/diagnóstico en 2 columnas. */
+  body:not(.phone-mode) #tab-comprobador-panel {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 12px;
+    min-width: 0;
+  }
+}
+
+/* TASAS en escritorio ancho: grid de 3 columnas para las cards de tasas. */
+@media (min-width: 1100px) {
+  body:not(.phone-mode) #tab-tasas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

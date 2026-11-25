@@ -1,0 +1,13 @@
+{
+  "name": "consutasas-rates-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Scaffold de Cloudflare Worker para consutasas-rates (no producción)",
+  "scripts": {
+    "check": "node --check src/index.js",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {}
+}
