@@ -254,12 +254,14 @@ DIRECTION = "BA"
 # Escenarios derivados del snapshot vivo (dev) — 3e: default Mejor/Mejor, sin 2%
 EXP_BB   = snap.quote(PAIR, DIRECTION, "best", "best", deposit=100.0)      # default (Mejor/Mejor)
 EXP_BMAX = snap.quote(PAIR, DIRECTION, "best", "max", deposit=100.0)       # destino “Máximo”
+EXP_OMAX = snap.quote(PAIR, DIRECTION, "max", "best", deposit=100.0)       # origen “Máximo” (3h)
 EXP_BAVG = snap.quote(PAIR, DIRECTION, "best", "average", deposit=100.0)   # destino “Promedio”
 EXP_BMIN = snap.quote(PAIR, DIRECTION, "best", "min", deposit=100.0)       # destino “Mínimo”
 EXPA_O   = snap.quote(PAIR, DIRECTION, "average", "average", deposit=100.0) # ambos lados “Promedio”
 EXP_REV  = snap.quote(PAIR, DIRECTION, "best", "best", target=EXP_BB["delivered"])
 VAL_BB   = fmt_app(EXP_BB["delivered"], "VES")
 VAL_BMAX = fmt_app(EXP_BMAX["delivered"], "VES")
+VAL_OMAX = fmt_app(EXP_OMAX["delivered"], "VES")
 VAL_BAVG = fmt_app(EXP_BAVG["delivered"], "VES")
 VAL_BMIN = fmt_app(EXP_BMIN["delivered"], "VES")
 VAL_AVG_O = fmt_app(EXPA_O["delivered"], "VES")
@@ -530,6 +532,75 @@ with sync_playwright() as p:
           VAL_BB in result_text(page) and "manual (manda la tasa ingresada)" not in panel_text(page),
           result_text(page)[:200].replace("\n", " | "))
 
+    # ---------- 3h) exclusión mutua: tasa manual ↔ modo (MAX/BEST/AVG/MIN) ----------
+    page.fill("#casos-esc-origin-manual", str(_manual_rate))
+    page.wait_for_timeout(300)
+    check("3h: escribir manual origen deselecciona los presets de ese lado (0 activos, aria-pressed=false ×4)",
+          page.eval_on_selector_all("#casos-esc-origin .mode-active", "els => els.map(e => e.dataset.scMode)") == [] and
+          page.eval_on_selector_all("#casos-esc-origin [data-sc-mode]", "els => els.map(e => e.getAttribute('aria-pressed'))") == ["false"] * 4,
+          str(page.eval_on_selector_all("#casos-esc-origin [data-sc-mode]", "els => els.map(e => e.getAttribute('aria-pressed'))")))
+    check("3h: la manual origen no toca el lado destino (Mejor sigue activo) y el factor sigue visible",
+          esc_active(page, "#casos-esc-dest") == ["best"] and fmt2(_factor) in panel_text(page),
+          panel_text(page)[:200])
+    stored_3h = page.evaluate("() => ({ l: localStorage.getItem('ct_caso'), s: sessionStorage.getItem('ct_caso') })")
+    caso_3h = json.loads(stored_3h["l"] or stored_3h["s"] or "null") or {}
+    check("3h: la manual persiste en ct_caso sin que el modo la pise (modo último " + "best retenido)",
+          caso_3h.get("scOriginManual") == _manual_rate and caso_3h.get("scOriginMode") == "best" and
+          caso_3h.get("scDestManual") is None, json.dumps(caso_3h)[:160])
+    page.click("#casos-esc-origin [data-sc-mode='max']")
+    page.wait_for_timeout(300)
+    check("3h: click en Máximo limpia el input manual, selecciona el modo y recalcula el desglose (valor Máximo)",
+          page.input_value("#casos-esc-origin-manual") == "" and esc_active(page, "#casos-esc-origin") == ["max"] and
+          VAL_OMAX in result_text(page) and "manual (manda la tasa ingresada)" not in panel_text(page),
+          (result_text(page)[:200] + " || " + panel_text(page)[:200]).replace("\n", " | "))
+    stored_3h2 = page.evaluate("() => ({ l: localStorage.getItem('ct_caso'), s: sessionStorage.getItem('ct_caso') })")
+    caso_3h2 = json.loads(stored_3h2["l"] or stored_3h2["s"] or "null") or {}
+    check("3h: el click en el preset persiste manual=null y modo=max en ct_caso",
+          caso_3h2.get("scOriginManual") is None and caso_3h2.get("scOriginMode") == "max",
+          json.dumps(caso_3h2)[:160])
+    page.fill("#casos-esc-origin-manual", str(_manual_rate))
+    page.wait_for_timeout(300)
+    check("3h: manual de nuevo → Máximo deseleccionado otra vez (el modo guardado no se pisa)",
+          page.eval_on_selector_all("#casos-esc-origin .mode-active", "els => els.map(e => e.dataset.scMode)") == [])
+    page.fill("#casos-esc-origin-manual", "")
+    page.wait_for_timeout(300)
+    check("3h: borrar la manual vuelve al modo último (Máximo activo) y al valor Máximo del desglose",
+          esc_active(page, "#casos-esc-origin") == ["max"] and VAL_OMAX in result_text(page),
+          result_text(page)[:200])
+    # Lado destino independiente: manual destino deselección SOLO destino.
+    page.fill("#casos-esc-dest-manual", "1070")
+    page.wait_for_timeout(300)
+    check("3h: manual destino deselecciona presets destino; origen sigue en Máximo",
+          page.eval_on_selector_all("#casos-esc-dest .mode-active", "els => els.map(e => e.dataset.scMode)") == [] and
+          esc_active(page, "#casos-esc-origin") == ["max"], "")
+    page.click("#casos-esc-dest [data-sc-mode='best']")
+    page.wait_for_timeout(300)
+    check("3h: click en Mejor destino limpia la manual destino y activa Mejor (origen intacto en Máximo)",
+          page.input_value("#casos-esc-dest-manual") == "" and esc_active(page, "#casos-esc-dest") == ["best"] and
+          esc_active(page, "#casos-esc-origin") == ["max"] and VAL_OMAX in result_text(page),
+          result_text(page)[:200])
+    page.click("#casos-esc-origin [data-sc-mode='best']")
+    page.wait_for_timeout(300)
+    check("3h: vuelta a Mejor/Mejor restaura el desglose base",
+          esc_active(page, "#casos-esc-origin") == ["best"] and esc_active(page, "#casos-esc-dest") == ["best"] and
+          VAL_BB in result_text(page), result_text(page)[:200])
+    # 3h P1-fix: con #casos-monto vacío la exclusión mutua sigue operando
+    # (el sync manual va en renderResultadoSafe, que corre con monto vacío).
+    page.fill("#casos-monto", "")
+    page.wait_for_timeout(200)
+    page.fill("#casos-esc-origin-manual", str(_manual_rate))
+    page.wait_for_timeout(300)
+    check("3h monto vacío: escribir manual deselecciona presets (0 activos) y persiste la manual",
+          page.eval_on_selector_all("#casos-esc-origin .mode-active", "els => els.map(e => e.dataset.scMode)") == [] and
+          (lambda s: (json.loads(s or "null") or {}).get("scOriginManual") == _manual_rate)(page.evaluate("() => localStorage.getItem('ct_caso') || sessionStorage.getItem('ct_caso')")), "")
+    page.fill("#casos-esc-origin-manual", "")
+    page.wait_for_timeout(300)
+    check("3h monto vacío: borrar la manual reactiva el modo retenido (Mejor activo, manual null)",
+          esc_active(page, "#casos-esc-origin") == ["best"] and
+          '"scOriginManual":null' in (page.evaluate("() => localStorage.getItem('ct_caso') || sessionStorage.getItem('ct_caso')") or ""), "")
+    page.fill("#casos-monto", "100")
+    page.wait_for_timeout(300)
+
     # ---------- 2b-3f) Detalle discreto + layout ----------
     check("3f: el párrafo largo va dentro de <details><summary>Detalle</summary> (no siempre visible)",
           page.eval_on_selector_all("#casos-escenario-card details.hint-details",
@@ -718,8 +789,21 @@ with sync_playwright() as p:
           and "CLIENTE DEPOSITA: PEN" in txtD and "S/ 0,29" not in txtD,
           txtD[:300].replace("\n", " | | "))
     check("dist: sin 404/requests fallidos", failed_reqs == [], str(failed_reqs[:5]))
-    check("dist: sin errores de consola", console_errors == [], str(console_errors[:3]))
-    check("dist: sin pageerror", page_errors == [], str(page_errors[:3]))
+
+    page2.fill("#casos-esc-origin-manual", "3.6")
+    page2.wait_for_timeout(300)
+    check("dist: 3h escribir manual deselecciona presets de origen y persiste la manual",
+          page2.eval_on_selector_all("#casos-esc-origin .mode-active", "els => els.map(e => e.dataset.scMode)") == [] and
+          (lambda s: (json.loads(s or "null") or {}).get("scOriginManual") == 3.6)(page2.evaluate("() => localStorage.getItem('ct_caso') || sessionStorage.getItem('ct_caso')")), "")
+    page2.click("#casos-esc-origin [data-sc-mode='best']")
+    page2.wait_for_timeout(300)
+    check("dist: 3h click en Mejor limpia la manual y la des-persiste (null)",
+          page2.input_value("#casos-esc-origin-manual") == "" and esc_active(page2, "#casos-esc-origin") == ["best"] and
+          '"scOriginManual":null' in (page2.evaluate("() => localStorage.getItem('ct_caso') || sessionStorage.getItem('ct_caso')") or ""), "")
+    # P2: los errores de consola/pageerror se validan DESPUÉS de las interacciones
+    # 3h (stronger: cubre también los eventos input/click del fix de exclusión mutua).
+    check("dist: sin errores de consola (tras interacciones 3h)", console_errors == [], str(console_errors[:3]))
+    check("dist: sin pageerror (tras interacciones 3h)", page_errors == [], str(page_errors[:3]))
 
     # persistencia real en sessionStorage/localStorage del navegador
     stored = page2.evaluate("() => ({ l: localStorage.getItem('ct_caso'), s: sessionStorage.getItem('ct_caso') })")

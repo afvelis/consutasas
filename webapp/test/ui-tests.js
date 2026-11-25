@@ -590,20 +590,88 @@ try {
   escDmIn.value = '';
   CT.renderResultado(); CT.renderEscenario();
 
-  /* ---- 3e: persistencia de modos + tasas manuales del panel en `ct_caso` ---- */
+  /* ---- 3h: exclusión mutua tasa manual ↔ modo (MAX/BEST/AVG/MIN) ----
+  * Escribir una manual deselecciona los presets de ESE lado (aria-pressed=false,
+  * sin mode-active) y recalcula en vivo; pulsar un preset limpia la manual de
+  * ese lado (value='' + S.*Manual=null); borrar la manual vuelve al modo
+  * último/default (BEST); lados independientes; todo persiste en `ct_caso`. */
+  const fireManualInput = id => (documentStub.getElementById(id).__listeners['input'] || []).forEach(fn => fn());
   escOmIn.value = '3.6';
-  CT.renderResultado(); CT.renderEscenario();
-  check('3e: setEscenarioModo(origin, min) activo para la prueba de persistencia',
-    CT.setEscenarioModo('origin', 'min') === true);
+  fireManualInput('casos-esc-origin-manual');
+  const oHtmlMut = sandbox.document.getElementById('casos-esc-origin').innerHTML;
+  const dHtmlMut = sandbox.document.getElementById('casos-esc-dest').innerHTML;
+  check('3h: escribir manual origen deselecciona el preset de ese lado (aria-pressed=false ×4, sin mode-active)',
+    oHtmlMut.match(/aria-pressed="true"/) === null && oHtmlMut.indexOf('mode-active') < 0 &&
+    (oHtmlMut.match(/aria-pressed="false"/g) || []).length === 4,
+    oHtmlMut.slice(0, 300));
+  check('3h: la manual origen no toca el lado destino (Mejor sigue activo en destino)',
+    (dHtmlMut.match(/aria-pressed="true"/g) || []).length === 1 &&
+    /mode-active" data-sc-side="dest" data-sc-mode="best"/.test(dHtmlMut),
+    dHtmlMut.slice(0, 200));
+  const casoMut = JSON.parse(ls.getItem('ct_caso') || ss.getItem('ct_caso') || 'null');
+  check('3h: la manual origen persiste en ct_caso en el mismo evento input (el modo último best NO la pisa)',
+    casoMut && casoMut.pairKey === 'VES/PEN' && casoMut.scOriginManual === 3.6 &&
+    casoMut.scOriginMode === 'best' && casoMut.scDestManual === null,
+    JSON.stringify(casoMut));
+  check('3h: desglose recalculado en vivo con la manual: fuente manual y factor −2,86 % (recargo)',
+    /manual \(manda la tasa ingresada\)/.test(sandbox.document.getElementById('casos-escenario').innerHTML) &&
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('-2,86') >= 0,
+    sandbox.document.getElementById('casos-escenario').innerHTML.slice(0, 200));
+  // Pulsar un modo: limpia la manual de ese lado, selecciona el modo y recalcula.
+  check('3h: setEscenarioModo(origin, max) limpia el input manual y selecciona el modo',
+    CT.setEscenarioModo('origin', 'max') === true && escOmIn.value === '' &&
+    CT.S.scOriginManual === null && CT.S.scOriginMode === 'max');
+  const oHtmlPreset = sandbox.document.getElementById('casos-esc-origin').innerHTML;
+  check('3h: tras pulsar el preset, Máximo vuelve a estar activo en origen (aria-pressed=true ×1)',
+    /mode-active" data-sc-side="origin" data-sc-mode="max"/.test(oHtmlPreset) &&
+    (oHtmlPreset.match(/aria-pressed="true"/g) || []).length === 1,
+    oHtmlPreset.slice(0, 300));
+  const casoPreset = JSON.parse(ls.getItem('ct_caso') || ss.getItem('ct_caso') || 'null');
+  check('3h: pulsar el preset persiste manual=null y modo=max en ct_caso',
+    casoPreset && casoPreset.scOriginManual === null && casoPreset.scOriginMode === 'max',
+    JSON.stringify(casoPreset));
+  check('3h: el factor desaparece al volver al modo (ambos lados muestran “Tasa del sistema (sin manual)”)',
+    (sandbox.document.getElementById('casos-escenario').innerHTML.match(/Tasa del sistema \(sin manual\)/g) || []).length === 2 &&
+    sandbox.document.getElementById('casos-escenario').innerHTML.indexOf('manual (manda la tasa ingresada)') < 0,
+    sandbox.document.getElementById('casos-escenario').innerHTML.slice(0, 200));
+  // Borrar la manual: vuelve al modo último (Máximo aquí; BEST si no se cambió antes).
+  escOmIn.value = '3.6';
+  fireManualInput('casos-esc-origin-manual');
+  check('3h: setup (manual activa otra vez → preset Máximo deseleccionado)',
+    sandbox.document.getElementById('casos-esc-origin').innerHTML.indexOf('mode-active') < 0,
+    sandbox.document.getElementById('casos-esc-origin').innerHTML.slice(0, 200));
+  escOmIn.value = '';
+  fireManualInput('casos-esc-origin-manual');
+  check('3h: borrar la manual vuelve al modo último (Máximo activo de nuevo, manual null)',
+    /mode-active" data-sc-side="origin" data-sc-mode="max"/.test(sandbox.document.getElementById('casos-esc-origin').innerHTML) &&
+    CT.S.scOriginManual === null,
+    sandbox.document.getElementById('casos-esc-origin').innerHTML.slice(0, 200));
+  // El otro lado es independiente: manual destino deselección SOLO destino.
+  escDmIn.value = '1070';
+  fireManualInput('casos-esc-dest-manual');
+  check('3h: manual destino deselecciona presets destino; origen sigue en Máximo',
+    sandbox.document.getElementById('casos-esc-dest').innerHTML.indexOf('mode-active') < 0 &&
+    /mode-active" data-sc-side="origin" data-sc-mode="max"/.test(sandbox.document.getElementById('casos-esc-origin').innerHTML),
+    sandbox.document.getElementById('casos-esc-dest').innerHTML.slice(0, 200));
+  CT.setEscenarioModo('dest', 'best'); // limpia la manual destino (3h) y restaura Mejor
+  check('3h: setEscenarioModo(dest, best) limpia la manual destino y activa Mejor',
+    escDmIn.value === '' && CT.S.scDestManual === null &&
+    /mode-active" data-sc-side="dest" data-sc-mode="best"/.test(sandbox.document.getElementById('casos-esc-dest').innerHTML),
+    'dest=' + sandbox.document.getElementById('casos-esc-dest').innerHTML.slice(0, 200));
+
+  /* ---- 3e: persistencia de modos + tasa manual del panel en `ct_caso` (3h:
+    la manual convive en ct_caso con el modo último; el modo no la pisa) ---- */
+  escOmIn.value = '3.6';
+  fireManualInput('casos-esc-origin-manual');
   CT.setModo('ba-fwd'); // trigger de saveCasoSel
   const casoRec = JSON.parse(ls.getItem('ct_caso') || ss.getItem('ct_caso') || 'null');
   check('3e: ct_caso guarda los modos de la matriz y la tasa manual (mismo registro, sin clave nueva)',
     casoRec && casoRec.pairKey === 'VES/PEN' && casoRec.modoId === 'ba-fwd' &&
-    casoRec.scOriginMode === 'min' && casoRec.scDestMode === 'best' &&
+    casoRec.scOriginMode === 'max' && casoRec.scDestMode === 'best' &&
     casoRec.scOriginManual === 3.6 && casoRec.scDestManual === null,
     JSON.stringify(casoRec));
   escOmIn.value = '';
-  CT.renderResultado(); CT.renderEscenario();
+  fireManualInput('casos-esc-origin-manual');
   check('3e: setEscenarioModo(origin, best) vuelve al default',
     CT.setEscenarioModo('origin', 'best') === true);
   CT.setModo('ba-fwd'); // persiste best + manual null
@@ -693,6 +761,13 @@ try {
     casoVacio && casoVacio.pairKey === 'VES/PEN' &&
     casoVacio.scOriginManual === 3.6 && casoVacio.scDestManual === null,
     JSON.stringify(casoVacio));
+  // 3h P1-fix: con monto vacío la manual TAMBIÉN deselecciona el preset (el sync
+  // va en renderResultadoSafe, el primero en el evento input).
+  check('3h monto vacío: escribir manual origen deselecciona el preset (aria-pressed=false ×4, sin mode-active)',
+    (sandbox.document.getElementById('casos-esc-origin').innerHTML.match(/aria-pressed="true"/) === null &&
+     sandbox.document.getElementById('casos-esc-origin').innerHTML.indexOf('mode-active') < 0 &&
+     (sandbox.document.getElementById('casos-esc-origin').innerHTML.match(/aria-pressed="false"/g) || []).length === 4),
+    sandbox.document.getElementById('casos-esc-origin').innerHTML.slice(0, 300));
   check('3e P2 persistencia: recargar restaura la manual guardada con monto vacío', (() => {
     CT.S.pairKey = null; CT.S.modo = null; CT.S.scOriginManual = null; CT.S.scDestManual = null;
     CT.renderCasos();
@@ -705,6 +780,12 @@ try {
   const casoVacioOff = JSON.parse(ls.getItem('ct_caso') || ss.getItem('ct_caso') || 'null');
   check('3e P2 persistencia: borrar la manual con monto vacío la des-persiste (null en ct_caso)',
     casoVacioOff && casoVacioOff.scOriginManual === null, JSON.stringify(casoVacioOff));
+  // 3h P1-fix: con monto vacío, borrar la manual reactiva el modo retenido (best).
+  check('3h monto vacío: borrar la manual reactiva el modo retenido (Mejor activo, manual null)',
+    /mode-active" data-sc-side="origin" data-sc-mode="best"/.test(sandbox.document.getElementById('casos-esc-origin').innerHTML) &&
+    (sandbox.document.getElementById('casos-esc-origin').innerHTML.match(/aria-pressed="true"/g) || []).length === 1 &&
+    CT.S.scOriginManual === null,
+    sandbox.document.getElementById('casos-esc-origin').innerHTML.slice(0, 300));
   // Restaurar el estado previo (monto 100, manuales vacíos) para las pruebas siguientes.
   sandbox.document.getElementById('casos-monto').value = '100';
   CT.renderTab('casos');
