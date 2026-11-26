@@ -75,6 +75,45 @@
   }
   CT.fmt = fmt;
 
+  // ==================== Fórmula EXACTA de Operaciones ====================
+  // Modelo exacto (corrige bugs del TotalizadorRemesasV5):
+  //   costoUSD   = sale   / saleRate
+  //   netoUSD    = entry  / entryRate
+  //   plusvalia  = netoUSD − costoUSD
+  //   si plusvalia > 0: base=plusvalia; diezmo=plusvalia*0.10;
+  //                     tercero=tercero? plusvalia*0.25:0;
+  //                     netoParaMi = plusvalia − diezmo − tercero
+  //   si plusvalia <= 0: perdida=|plusvalia|; base=diezmo=tercero=0;
+  //                     netoParaMi=plusvalia (negativo)
+  // Mismos porcentajes que el engine (diezmo 10 %, tercero 25 %; la comisión
+  // de plataforma 7 %/8 % COP queda en CTEngine.caseQuote, no aplica aquí).
+  // Los totales del listado se calculan SIEMPRE desde los valores crudos.
+  function computeOperation(o) {
+    const out = { ok: false };
+    const sale = Number(o.sale), saleRate = Number(o.saleRate);
+    const entry = Number(o.entry), entryRate = Number(o.entryRate);
+    if (!Number.isFinite(sale) || !Number.isFinite(saleRate) || !Number.isFinite(entry) || !Number.isFinite(entryRate)) { out.error = 'Todos los montos y tasas deben ser números.'; return out; }
+    if (!(sale > 0) || !(saleRate > 0) || !(entry > 0) || !(entryRate > 0)) { out.error = 'Ningún monto o tasa puede ser 0 o negativo (evita divisiones por cero).'; return out; }
+    const costoUSD = sale / saleRate;
+    const netoUSD = entry / entryRate;
+    const plusvalia = netoUSD - costoUSD;
+    let base, diezmo, tercero, netoParaMi, perdida;
+    if (plusvalia > 0) {
+      base = plusvalia;
+      diezmo = plusvalia * 0.10;
+      tercero = o.tercero ? plusvalia * 0.25 : 0;
+      netoParaMi = plusvalia - diezmo - tercero;
+      perdida = 0;
+    } else {
+      base = 0; diezmo = 0; tercero = 0;
+      perdida = Math.abs(plusvalia);
+      netoParaMi = plusvalia; // pérdida en negativo
+    }
+    Object.assign(out, { ok: true, costoUSD, netoUSD, plusvalia, base, diezmo, tercero, netoParaMi, perdida });
+    return out;
+  }
+  CT.computeOperation = computeOperation;
+
   function codeSymbol(code) {
     const m = CURRENCY_LABEL[code];
     return m ? m.symbol : String(code || '—');
