@@ -401,6 +401,46 @@ check('cada fiat trae ads compra/venta 20/20 con orden asc/desc y campos complet
 check('eurRef con usd finito y status', localRates.eurRef != null &&
   Number.isFinite(localRates.eurRef.usd) && typeof localRates.eurRef.status === 'string' && localRates.eurRef.status.length > 0);
 
+console.log('\n[12b] eurRef: compat forma del BOT (usd = EUR→USD) y forma antigua');
+// Caso A — forma real del bot: solo `usd` (1 EUR en USD). Se deriva usdToEur = 1/usd sin redondeo.
+var fxBot = engine.buildFx({
+  fixture: true,
+  pairs: { VES: { compra: 1000, venta: 1100 } },
+  eurRef: { fixture: true, source: 'frankfurter', status: 'ok', usd: 1.0935 }
+});
+near('eurRef forma bot: unitsPerUsd.EUR = 1/1.0935 (unidades EUR por 1 USD, sin redondeo)',
+  fxBot.unitsPerUsd.EUR, 1 / 1.0935, 1e-9);
+near('eurRef forma bot: fx.eurRef.eurToUsd expone el usd del bot (1.0935)',
+  fxBot.eurRef.eurToUsd, 1.0935, 1e-12);
+near('eurRef forma bot: fx.eurRef.usdToEur derivado = 1/1.0935',
+  fxBot.eurRef.usdToEur, 1 / 1.0935, 1e-9);
+check('eurRef forma bot: sin avisos de EUR/USD utilizable ni EUR referencial no disponible',
+  fxBot.warnings.every(function (w) {
+    return w.indexOf('EUR/USD utilizable') === -1 && w.indexOf('EUR referencial no disponible') === -1;
+  }), JSON.stringify(fxBot.warnings));
+// Caso B — forma antigua (usdToEur/eurToUsd explícitos): comportamiento intacto.
+var fxOld = engine.buildFx({ fixture: true, eurRef: { fixture: true, usdToEur: 0.9, eurToUsd: 1.1111 } });
+check('eurRef forma antigua: unitsPerUsd.EUR = 0.9 sin cambios', fxOld.unitsPerUsd.EUR === 0.9);
+// Caso C — claves contradictorias: ganan las explícitas antiguas (usdToEur/eurToUsd), no el usd del bot.
+var fxConflict = engine.buildFx({
+  fixture: true,
+  eurRef: { fixture: true, usd: 2, usdToEur: 0.5, eurToUsd: 3 }
+});
+check('eurRef conflicto: las claves explícitas antiguas ganan (unitsPerUsd.EUR = usdToEur 0.5, no 1/2)',
+  fxConflict.unitsPerUsd.EUR === 0.5);
+check('eurRef conflicto: fx.eurRef.eurToUsd = eurToUsd explícito (3), no usd del bot (2)',
+  fxConflict.eurRef.eurToUsd === 3);
+// Caso D — eurRef inservible (vacío / usd inválido): null + aviso, nunca inventar.
+var fxEmpty = engine.buildFx({ fixture: true, eurRef: {} });
+var fxZero = engine.buildFx({ fixture: true, eurRef: { usd: 0 } });
+var fxStr = engine.buildFx({ fixture: true, eurRef: { usd: 'x' } });
+[fxEmpty, fxZero, fxStr].forEach(function (fx, i) {
+  check('eurRef inservible (caso ' + ['{}', '{usd:0}', "{usd:'x'}"][i] + '): unitsPerUsd.EUR null y aviso presente (no inventa)',
+    fx.unitsPerUsd.EUR == null &&
+    fx.warnings.some(function (w) { return w.indexOf('sin tasa EUR/USD utilizable') !== -1; }),
+    JSON.stringify(fx.warnings));
+});
+
 console.log('\n[13] Pares del usuario y cotización de pares personalizados');
 const s2 = engine.defaultSettings();
 s2.customPairs = [['VES', 'EUR']];

@@ -323,16 +323,22 @@
       }
     });
     fx.unitsPerUsd.USD = fx.unitsPerUsdCompra.USD = fx.unitsPerUsdVenta.USD = 1;
+    // El bot publica `eurRef.usd` = 1 EUR en USD (EUR→USD, p.ej. 1.0935); se mantiene
+    // compatibilidad con la forma antigua eurRef.usdToEur/eurToUsd, que gana si existe.
     if (rates.eurRef && typeof rates.eurRef === 'object') {
+      var eurToUsd = finitePositive(rates.eurRef.eurToUsd);
+      if (eurToUsd == null) eurToUsd = finitePositive(rates.eurRef.usd); // bot: EUR→USD
+      var usdToEur = finitePositive(rates.eurRef.usdToEur);
+      if (usdToEur == null && eurToUsd != null) usdToEur = 1 / eurToUsd; // sin redondeo
       fx.eurRef = {
-        usdToEur: finitePositive(rates.eurRef.usdToEur),
-        eurToUsd: finitePositive(rates.eurRef.eurToUsd),
+        usdToEur: usdToEur,
+        eurToUsd: eurToUsd,
         source: rates.eurRef.source || null,
         date: rates.eurRef.date || null,
         fixture: rates.eurRef.fixture === true
       };
       fx.unitsPerUsd.EUR = fx.unitsPerUsdCompra.EUR = fx.unitsPerUsdVenta.EUR =
-        fx.eurRef.usdToEur != null ? fx.eurRef.usdToEur : null;
+        usdToEur != null ? usdToEur : null;
       if (fx.unitsPerUsd.EUR == null) {
         fx.warnings.push('eurRef presente pero sin tasa EUR/USD utilizable: EUR referencial no disponible.');
       }
