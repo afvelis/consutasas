@@ -542,10 +542,31 @@ function makeSandbox(payload) {
   let liveOk = true, liveErr = null;
   try { CT.renderTab('tasas'); CT.renderComprobador(); } catch (e) { liveOk = false; liveErr = e; }
   check('snapshot real data/rates.json: render de tasas + comprobador sin lanzar', liveOk, liveErr && liveErr.message);
-  check('snapshot real: EUR referencial con frankfurter y diffPct', /frankfurter/.test(htmlLog['ta-eurref']) && htmlLog['ta-eurref'].indexOf('0,03') >= 0);
+  // Valores esperados derivados del MISMO JSON que usa el código bajo prueba,
+  // formateados con CT.fmt (es-VE) como hace el render: el test sigue verificando
+  // que el render usa el snapshot y el formato correcto, sin acoplarse a tasas concretas.
+  const liveDiffPctStr = CT.fmt(liveRates.eurRef && liveRates.eurRef.diffPct, 2);
+  const liveBcvUsdStr = CT.fmt(liveRates.sources && liveRates.sources.bcv && liveRates.sources.bcv.samples && liveRates.sources.bcv.samples.usd, 4);
+  const esVeToNum = s => parseFloat(String(s).replace(/\./g, '').replace(',', '.'));
+  check('snapshot real: EUR referencial con frankfurter y diffPct (derivado del JSON)',
+    /frankfurter/.test(htmlLog['ta-eurref']) && htmlLog['ta-eurref'].indexOf(liveDiffPctStr) >= 0 &&
+    liveDiffPctStr.indexOf(',') > 0);
+  // Coherencia anti-máscara: re-parseando el render debe salir el diffPct del JSON
+  check('snapshot real: EUR diffPct renderizado == eurRef.diffPct del JSON (es-VE re-parseable)',
+    liveRates.eurRef && liveRates.eurRef.diffPct != null &&
+    htmlLog['ta-eurref'].indexOf(liveDiffPctStr) >= 0 &&
+    Math.abs(esVeToNum(liveDiffPctStr) - liveRates.eurRef.diffPct) < 5e-5,
+    'diffPctStr=' + liveDiffPctStr);
   check('snapshot real: multi-par con 20/20 anuncios por lado (VES)',
     /Anuncios \(compra\/venta\)/.test(htmlLog['ta-multipares']) && htmlLog['ta-multipares'].indexOf('20 / 20') >= 0);
-  check('snapshot real: BCV con valores publicados', htmlLog['ta-bcv'].indexOf('919,8227') >= 0);
+  check('snapshot real: BCV con valores publicados (derivado del JSON)',
+    htmlLog['ta-bcv'].indexOf(liveBcvUsdStr) >= 0 && liveBcvUsdStr.indexOf(',') > 0);
+  // Coherencia anti-máscara: re-parseando el render debe salir el USD BCV del JSON
+  check('snapshot real: BCV USD renderizado == bcv.samples.usd del JSON (es-VE re-parseable)',
+    liveRates.sources && liveRates.sources.bcv && liveRates.sources.bcv.samples && liveRates.sources.bcv.samples.usd != null &&
+    htmlLog['ta-bcv'].indexOf(liveBcvUsdStr) >= 0 &&
+    Math.abs(esVeToNum(liveBcvUsdStr) - liveRates.sources.bcv.samples.usd) < 5e-5,
+    'bcvUsdStr=' + liveBcvUsdStr);
   CT.S.rates = FIXTURE;
 
   /* ---- hooks del núcleo intactos ---- */

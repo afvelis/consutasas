@@ -1,18 +1,18 @@
 {
   "schema": "consutasas/rates.v1",
-  "generatedAt": "2026-11-22T19:33:39Z",
-  "generatedAtCaracas": "2026-11-22T15:33:39-04:00",
+  "generatedAt": "2026-11-26T10:53:47Z",
+  "generatedAtCaracas": "2026-11-26T06:53:47-04:00",
   "sources": {
     "bcv": {
       "status": "ok",
       "http": 200,
       "samples": {
-        "usd": 919.8227,
-        "eur": 1011.17949056
+        "usd": 924.3534,
+        "eur": 1011.7325269
       },
       "url": "https://www.bcv.org.ve/",
       "fuente": "BCV-Web",
-      "actualizado": "Martes, 24 Noviembre  2026"
+      "actualizado": "Jueves, 26 Noviembre  2026"
     },
     "binance": {
       "status": "ok",
@@ -26,7 +26,7 @@
       "status": "ok",
       "http": 200,
       "samples": {
-        "ads": 381
+        "ads": 344
       },
       "url": "https://api2.bybit.com/fiat/otc/item/online"
     }
@@ -35,12 +35,12 @@
     "VES": {
       "code": "VES",
       "status": "ok",
-      "compra": 1095.935,
-      "venta": 1084.0342,
-      "spreadPct": -1.09,
-      "mejorCompra": 1087.0,
-      "mejorVenta": 1101.059,
-      "mejorSpreadPct": 1.29,
+      "compra": 1125.5868,
+      "venta": 1082.2375,
+      "spreadPct": -3.85,
+      "mejorCompra": 1100.0,
+      "mejorVenta": 1110.0,
+      "mejorSpreadPct": 0.91,
       "muestras": {
         "buy": 81,
         "sell": 81,
@@ -48,26 +48,26 @@
       },
       "promediosPorPagina": {
         "compra": {
-          "page1": 1093.9495,
-          "page2": 1097.9701
+          "page1": 1111.167,
+          "page2": 1140.3671
         },
         "venta": {
-          "page1": 1085.229,
-          "page2": 1082.8094
+          "page1": 1095.2602,
+          "page2": 1068.8892
         }
       },
       "porPlataforma": {
         "binance": {
-          "compra": 1092.3601,
-          "venta": 1088.8873,
+          "compra": 1105.4189,
+          "venta": 1098.3595,
           "muestras": {
             "compra": 41,
             "venta": 41
           }
         },
         "bybit": {
-          "compra": 1099.5992,
-          "venta": 1079.0597,
+          "compra": 1146.2589,
+          "venta": 1065.7125,
           "muestras": {
             "compra": 40,
             "venta": 40
@@ -77,325 +77,325 @@
       "ads": {
         "compra": [
           {
-            "price": 1087.0,
-            "min": 450000.0,
-            "max": 500000.0,
-            "available": 1500.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1088.0,
-            "min": 7450.0,
-            "max": 7500.0,
-            "available": 100.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1089.0,
-            "min": 1500000.0,
-            "max": 1550000.0,
-            "available": 2000.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1089.0,
-            "min": 149000.0,
-            "max": 150000.0,
-            "available": 137.74,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.0,
-            "min": 218000.0,
-            "max": 218001.0,
-            "available": 202.3,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.0,
-            "min": 108500.0,
-            "max": 109000.0,
-            "available": 100.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.0,
-            "min": 50000.0,
-            "max": 109500.0,
-            "available": 100.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.0,
-            "min": 40000.0,
-            "max": 109000.0,
-            "available": 100.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.2,
-            "min": 107000.0,
+            "price": 1100.0,
+            "min": 1000.0,
             "max": 4000000.0,
-            "available": 106.85,
+            "available": 2.05,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 1090.38,
+            "price": 1101.8,
+            "min": 3000000.0,
+            "max": 36450000.0,
+            "available": 6141.92,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1101.899,
+            "min": 2000000.0,
+            "max": 30000000.0,
+            "available": 6551.9,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1101.9,
+            "min": 4000000.0,
+            "max": 24413340.0,
+            "available": 17111.23,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1102.0,
+            "min": 2570000.0,
+            "max": 8000000.0,
+            "available": 2344.69,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1102.28,
             "min": 1000000.0,
-            "max": 5000000.0,
-            "available": 2000.0,
+            "max": 36450000.0,
+            "available": 18058.86,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 1090.5,
+            "price": 1102.299,
+            "min": 4000000.0,
+            "max": 30000000.0,
+            "available": 13907.72,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1102.55,
+            "min": 4000000.0,
+            "max": 25000000.0,
+            "available": 15732.81,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1102.588,
+            "min": 2000000.0,
+            "max": 8000000.0,
+            "available": 3065.22,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1102.7,
+            "min": 2000000.0,
+            "max": 36450000.0,
+            "available": 38788.63,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1102.8,
+            "min": 1000000.0,
+            "max": 3000000.0,
+            "available": 914.46,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1103.0,
+            "min": 7000000.0,
+            "max": 36450000.0,
+            "available": 20025.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1104.0,
+            "min": 1000000.0,
+            "max": 9000000.0,
+            "available": 5192.79,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1104.0,
+            "min": 2000.0,
+            "max": 178376.0,
+            "available": 160.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1104.389,
+            "min": 2000000.0,
+            "max": 36450000.0,
+            "available": 16980.58,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1104.49,
             "min": 300.0,
-            "max": 50000.0,
-            "available": 4.86,
+            "max": 200000.0,
+            "available": 40.17,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 1090.9,
-            "min": 500000.0,
-            "max": 4400000.0,
-            "available": 935.62,
+            "price": 1104.49,
+            "min": 300.0,
+            "max": 200000.0,
+            "available": 21.32,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 1090.99,
-            "min": 20000.0,
-            "max": 21000.0,
-            "available": 25.1,
+            "price": 1104.8,
+            "min": 700000.0,
+            "max": 6000000.0,
+            "available": 4018.22,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 1091.0,
-            "min": 5400000.0,
-            "max": 36450000.0,
-            "available": 6106.57,
+            "price": 1104.868,
+            "min": 100000.0,
+            "max": 1490000.0,
+            "available": 673.27,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 1091.0,
-            "min": 11000000.0,
-            "max": 36450000.0,
-            "available": 10438.4,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1091.0,
-            "min": 185000.0,
-            "max": 185470.0,
-            "available": 170.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1091.0,
-            "min": 20000.0,
-            "max": 854675.871,
-            "available": 783.3876,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 1091.489,
-            "min": 400000.0,
-            "max": 1900000.0,
-            "available": 375.96,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1091.798,
-            "min": 300000.0,
-            "max": 36450000.0,
-            "available": 3222.24,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1091.8,
-            "min": 400000.0,
-            "max": 4500000.0,
-            "available": 1284.76,
+            "price": 1104.869,
+            "min": 100000.0,
+            "max": 4000000.0,
+            "available": 649.01,
             "platform": "binance",
             "page": 1
           }
         ],
         "venta": [
           {
-            "price": 1101.059,
-            "min": 3000.0,
-            "max": 150000.0,
-            "available": 1157.75,
+            "price": 1110.0,
+            "min": 1000.0,
+            "max": 20000.0,
+            "available": 29831.22,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1105.0,
+            "min": 50000.0,
+            "max": 4000000.0,
+            "available": 5000.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1102.101,
+            "min": 10000.0,
+            "max": 111162.976,
+            "available": 100.8646,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 1102.0,
+            "min": 1000000.0,
+            "max": 4000000.0,
+            "available": 2815.52,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1102.0,
+            "min": 300000.0,
+            "max": 400000.0,
+            "available": 420.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1101.1,
+            "min": 10000.0,
+            "max": 66568.652,
+            "available": 60.4565,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 1100.6,
+            "min": 3000000.0,
+            "max": 36450000.0,
+            "available": 10000.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1100.5,
+            "min": 55000.0,
+            "max": 55100.0,
+            "available": 100.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1100.3,
+            "min": 100000.0,
+            "max": 1000000.0,
+            "available": 94.45,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1100.077,
+            "min": 50000.0,
+            "max": 4000000.0,
+            "available": 100.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1100.05,
+            "min": 150000.0,
+            "max": 4000000.0,
+            "available": 4420.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1100.021,
+            "min": 100000.0,
+            "max": 4000000.0,
+            "available": 814.8,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1100.02,
+            "min": 50000.0,
+            "max": 4000000.0,
+            "available": 2492.85,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1100.001,
+            "min": 1000000.0,
+            "max": 36450000.0,
+            "available": 11400.23,
             "platform": "binance",
             "page": 1
           },
           {
             "price": 1100.0,
-            "min": 1000.0,
-            "max": 100000.0,
-            "available": 29850.18,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1091.51,
-            "min": 10000000.0,
-            "max": 36450000.0,
-            "available": 70000.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1091.5,
-            "min": 10000000.0,
-            "max": 36450000.0,
-            "available": 40000.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.6,
-            "min": 4000000.0,
-            "max": 36450000.0,
-            "available": 50288.8,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.5,
-            "min": 7000000.0,
-            "max": 36000000.0,
-            "available": 25860.29,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.5,
-            "min": 5000000.0,
-            "max": 36450000.0,
-            "available": 75000.06,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.5,
-            "min": 2000000.0,
-            "max": 36450000.0,
-            "available": 17596.18,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.301,
-            "min": 3000000.0,
-            "max": 28500000.0,
-            "available": 23278.06,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.3,
-            "min": 3000000.0,
-            "max": 36000000.0,
-            "available": 39850.87,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.083,
-            "min": 2000000.0,
-            "max": 36450000.0,
-            "available": 28000.06,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.081,
-            "min": 1000000.0,
-            "max": 36450000.0,
-            "available": 55665.7,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.001,
             "min": 500000.0,
-            "max": 3000000.0,
-            "available": 44889.16,
+            "max": 1100000.0,
+            "available": 10000.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 1090.0,
-            "min": 2000000.0,
-            "max": 4000000.0,
-            "available": 30000.0,
+            "price": 1100.0,
+            "min": 275000.0,
+            "max": 550000.0,
+            "available": 1580.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 1090.0,
-            "min": 10000000.0,
-            "max": 36450000.0,
-            "available": 23800.06,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.0,
-            "min": 1000000.0,
-            "max": 36450000.0,
-            "available": 48027.53,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1090.0,
-            "min": 700000.0,
-            "max": 34000000.0,
-            "available": 13900.74,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1089.699,
+            "price": 1100.0,
             "min": 500000.0,
-            "max": 1500000.0,
-            "available": 54385.34,
+            "max": 771400.0,
+            "available": 700.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 1089.62,
-            "min": 800000.0,
-            "max": 4000000.0,
-            "available": 5675.27,
+            "price": 1100.0,
+            "min": 4000.0,
+            "max": 10000000.0,
+            "available": 4.81,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 1089.5,
-            "min": 400000.0,
-            "max": 34500000.0,
-            "available": 370.0,
+            "price": 1100.0,
+            "min": 1500000.0,
+            "max": 36000000.0,
+            "available": 23361.01,
             "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1100.0,
+            "min": 1000000.0,
+            "max": 63000000.0,
+            "available": 88090.9091,
+            "platform": "bybit",
             "page": 1
           }
         ]
@@ -404,41 +404,41 @@
     "PEN": {
       "code": "PEN",
       "status": "ok",
-      "compra": 3.5817,
-      "venta": 3.4687,
-      "spreadPct": -3.16,
+      "compra": 3.6522,
+      "venta": 3.4197,
+      "spreadPct": -6.37,
       "mejorCompra": 3.18,
-      "mejorVenta": 3.519,
-      "mejorSpreadPct": 10.66,
+      "mejorVenta": 3.504,
+      "mejorSpreadPct": 10.19,
       "muestras": {
-        "buy": 81,
+        "buy": 68,
         "sell": 81,
-        "total": 162
+        "total": 149
       },
       "promediosPorPagina": {
         "compra": {
-          "page1": 3.518,
-          "page2": 3.6471
+          "page1": 3.5663,
+          "page2": 3.775
         },
         "venta": {
-          "page1": 3.4915,
-          "page2": 3.4453
+          "page1": 3.4533,
+          "page2": 3.3853
         }
       },
       "porPlataforma": {
         "binance": {
-          "compra": 3.526,
-          "venta": 3.4978,
+          "compra": 3.6143,
+          "venta": 3.4815,
           "muestras": {
-            "compra": 41,
+            "compra": 40,
             "venta": 41
           }
         },
         "bybit": {
-          "compra": 3.6389,
-          "venta": 3.4389,
+          "compra": 3.7065,
+          "venta": 3.3563,
           "muestras": {
-            "compra": 40,
+            "compra": 28,
             "venta": 40
           }
         }
@@ -448,239 +448,207 @@
           {
             "price": 3.18,
             "min": 8.0,
-            "max": 20.316,
-            "available": 6.3887,
+            "max": 10.347,
+            "available": 3.2538,
             "platform": "bybit",
             "page": 1
           },
           {
-            "price": 3.512,
-            "min": 2000.0,
-            "max": 50952.38,
-            "available": 14508.0809,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 3.512,
+            "price": 3.517,
             "min": 50.0,
             "max": 500.0,
-            "available": 1397.5344,
+            "available": 1805.2343,
             "platform": "bybit",
             "page": 1
           },
           {
-            "price": 3.513,
+            "price": 3.518,
+            "min": 500.0,
+            "max": 9921.539,
+            "available": 2820.2216,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 3.518,
+            "min": 8.0,
+            "max": 31.316,
+            "available": 8.9019,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 3.518,
+            "min": 100.0,
+            "max": 11122.078,
+            "available": 3161.4777,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 3.519,
+            "min": 40.0,
+            "max": 115.534,
+            "available": 32.8316,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 3.519,
             "min": 50.0,
-            "max": 718.634,
-            "available": 204.5644,
+            "max": 3146.61,
+            "available": 894.1776,
             "platform": "bybit",
             "page": 1
           },
           {
-            "price": 3.514,
-            "min": 8.0,
-            "max": 24.107,
-            "available": 6.8605,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 3.515,
-            "min": 8.0,
-            "max": 163.85,
-            "available": 46.6147,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 3.518,
-            "min": 100.0,
-            "max": 37695.0,
-            "available": 3091.3,
+            "price": 3.52,
+            "min": 30.0,
+            "max": 699.0,
+            "available": 395.04,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.518,
-            "min": 1190.0,
-            "max": 1194.0,
-            "available": 339.0,
+            "price": 3.521,
+            "min": 300.0,
+            "max": 3300.0,
+            "available": 1919.83,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.518,
-            "min": 2000.0,
-            "max": 30000.0,
-            "available": 70372.12,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3.518,
+            "price": 3.522,
             "min": 500.0,
-            "max": 7000.0,
-            "available": 21650.38,
+            "max": 2000.0,
+            "available": 451.64,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.518,
+            "price": 3.523,
+            "min": 20.0,
+            "max": 47.015,
+            "available": 13.3454,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 3.526,
             "min": 500.0,
-            "max": 8000.0,
-            "available": 3865.84,
+            "max": 3000.0,
+            "available": 4455.48,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.518,
-            "min": 100.0,
-            "max": 354.274,
-            "available": 100.7034,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 3.518,
-            "min": 100.0,
-            "max": 1172.348,
-            "available": 333.243,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 3.519,
-            "min": 2000.0,
-            "max": 75000.0,
-            "available": 68374.66,
+            "price": 3.53,
+            "min": 30.0,
+            "max": 1057.0,
+            "available": 300.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.519,
+            "price": 3.53,
+            "min": 60.0,
+            "max": 662.318,
+            "available": 187.6256,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 3.53,
+            "min": 35.0,
+            "max": 46.499,
+            "available": 13.1728,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 3.533,
+            "min": 300.0,
+            "max": 9000.0,
+            "available": 298.4,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3.536,
             "min": 1000.0,
-            "max": 75390.0,
-            "available": 5678.39,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3.519,
-            "min": 750.0,
-            "max": 75001.0,
-            "available": 503.97,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3.519,
-            "min": 400.0,
             "max": 10000.0,
-            "available": 9457.93,
+            "available": 3843.97,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.52,
-            "min": 3000.0,
-            "max": 75390.0,
-            "available": 7937.74,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3.52,
-            "min": 800.0,
+            "price": 3.537,
+            "min": 30.0,
             "max": 37695.0,
-            "available": 3298.55,
+            "available": 234.72,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.52,
-            "min": 2000.0,
-            "max": 30000.0,
-            "available": 4969.57,
+            "price": 3.537,
+            "min": 300.0,
+            "max": 75000.0,
+            "available": 39539.93,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3.54,
+            "min": 100.0,
+            "max": 13036.0,
+            "available": 920.16,
             "platform": "binance",
             "page": 1
           }
         ],
         "venta": [
           {
-            "price": 3.519,
-            "min": 300.0,
-            "max": 730.0,
-            "available": 85.53,
+            "price": 3.504,
+            "min": 1499.0,
+            "max": 1500.0,
+            "available": 430.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.517,
-            "min": 665.0,
-            "max": 666.0,
-            "available": 190.0,
+            "price": 3.5,
+            "min": 350.0,
+            "max": 350.0,
+            "available": 100.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.516,
-            "min": 38.0,
-            "max": 138.0,
-            "available": 70.07,
+            "price": 3.5,
+            "min": 299.0,
+            "max": 299.0,
+            "available": 101.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.511,
-            "min": 300.0,
-            "max": 15000.0,
-            "available": 727.47,
-            "platform": "binance",
+            "price": 3.5,
+            "min": 68456.0,
+            "max": 68456.0,
+            "available": 19559.0,
+            "platform": "bybit",
             "page": 1
           },
           {
-            "price": 3.51,
-            "min": 1700.0,
-            "max": 1703.0,
-            "available": 486.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3.505,
-            "min": 1050.0,
-            "max": 2500.0,
-            "available": 436.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3.503,
+            "price": 3.496,
             "min": 30.0,
-            "max": 490.0,
-            "available": 140.0,
+            "max": 1000.0,
+            "available": 71.52,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.503,
-            "min": 1000.0,
-            "max": 8000.0,
-            "available": 2000.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3.502,
-            "min": 100.0,
-            "max": 5800.0,
-            "available": 1657.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3.502,
+            "price": 3.496,
             "min": 500.0,
             "max": 20000.0,
             "available": 77959.0,
@@ -688,82 +656,114 @@
             "page": 1
           },
           {
-            "price": 3.502,
-            "min": 150.0,
-            "max": 2500.0,
-            "available": 342.2,
+            "price": 3.496,
+            "min": 900.0,
+            "max": 2900.0,
+            "available": 520.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.502,
+            "price": 3.495,
+            "min": 1100.0,
+            "max": 2999.0,
+            "available": 5000.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3.495,
             "min": 30.0,
-            "max": 620.0,
-            "available": 177.0,
+            "max": 767.0,
+            "available": 220.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.501,
-            "min": 300.0,
-            "max": 10000.0,
-            "available": 1936.34,
+            "price": 3.494,
+            "min": 100.0,
+            "max": 37695.0,
+            "available": 4100.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.501,
+            "price": 3.491,
+            "min": 100.0,
+            "max": 3500.0,
+            "available": 4700.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3.491,
+            "min": 1000.0,
+            "max": 4500.0,
+            "available": 419.09,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3.49,
             "min": 30.0,
             "max": 37695.0,
-            "available": 314.0,
+            "available": 2500.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.501,
-            "min": 3500.0,
-            "max": 20000.0,
-            "available": 44890.88,
+            "price": 3.49,
+            "min": 400.0,
+            "max": 5000.0,
+            "available": 23545.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.501,
-            "min": 4000.0,
-            "max": 75390.0,
-            "available": 8975.67,
-            "platform": "binance",
+            "price": 3.49,
+            "min": 1000.0,
+            "max": 1577.48,
+            "available": 452.0,
+            "platform": "bybit",
             "page": 1
           },
           {
-            "price": 3.501,
+            "price": 3.49,
+            "min": 1000.0,
+            "max": 3490.0,
+            "available": 1000.0,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 3.489,
             "min": 200.0,
             "max": 2500.0,
-            "available": 172.0,
+            "available": 1000.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.501,
-            "min": 450.0,
-            "max": 2500.0,
-            "available": 1200.0,
+            "price": 3.487,
+            "min": 300.0,
+            "max": 3300.0,
+            "available": 1100.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.5,
-            "min": 30.0,
-            "max": 37695.0,
-            "available": 300.0,
+            "price": 3.486,
+            "min": 100.0,
+            "max": 990.0,
+            "available": 191.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 3.5,
-            "min": 1000.0,
-            "max": 15000.0,
-            "available": 62794.81,
+            "price": 3.486,
+            "min": 300.0,
+            "max": 75390.0,
+            "available": 22204.35,
             "platform": "binance",
             "page": 1
           }
@@ -773,750 +773,12 @@
     "CLP": {
       "code": "CLP",
       "status": "ok",
-      "compra": 1050.2701,
-      "venta": 1016.9826,
-      "spreadPct": -3.17,
+      "compra": 1058.7319,
+      "venta": 1012.83,
+      "spreadPct": -4.34,
       "mejorCompra": 876.0,
-      "mejorVenta": 1042.95,
-      "mejorSpreadPct": 19.06,
-      "muestras": {
-        "buy": 73,
-        "sell": 80,
-        "total": 153
-      },
-      "promediosPorPagina": {
-        "compra": {
-          "page1": 1030.1948,
-          "page2": 1074.6039
-        },
-        "venta": {
-          "page1": 1026.3028,
-          "page2": 1007.6625
-        }
-      },
-      "porPlataforma": {
-        "binance": {
-          "compra": 1036.7398,
-          "venta": 1027.9848,
-          "muestras": {
-            "compra": 40,
-            "venta": 40
-          }
-        },
-        "bybit": {
-          "compra": 1066.6706,
-          "venta": 1005.9805,
-          "muestras": {
-            "compra": 33,
-            "venta": 40
-          }
-        }
-      },
-      "ads": {
-        "compra": [
-          {
-            "price": 876.0,
-            "min": 1838.0,
-            "max": 5596.5,
-            "available": 6.3887,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 879.0,
-            "min": 1838.0,
-            "max": 2521.58,
-            "available": 2.8687,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 1029.0,
-            "min": 40000.0,
-            "max": 2031340.05,
-            "available": 1974.0914,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 1033.85,
-            "min": 100000.0,
-            "max": 1000000.0,
-            "available": 765.27,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1033.94,
-            "min": 200000.0,
-            "max": 18600000.0,
-            "available": 9156.3,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1033.94,
-            "min": 210000.0,
-            "max": 7000000.0,
-            "available": 14220.56,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1033.95,
-            "min": 1000000.0,
-            "max": 12000000.0,
-            "available": 12176.82,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1033.96,
-            "min": 275000.0,
-            "max": 9000000.0,
-            "available": 10924.73,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1033.96,
-            "min": 50000.0,
-            "max": 18600000.0,
-            "available": 305.8,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1033.97,
-            "min": 150000.0,
-            "max": 18600000.0,
-            "available": 9337.4,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1033.98,
-            "min": 400000.0,
-            "max": 8000000.0,
-            "available": 1224.74,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1033.99,
-            "min": 200000.0,
-            "max": 7000000.0,
-            "available": 9810.54,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1033.99,
-            "min": 170000.0,
-            "max": 7000000.0,
-            "available": 1240.69,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1033.99,
-            "min": 200000.0,
-            "max": 7000000.0,
-            "available": 15000.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1033.99,
-            "min": 200000.0,
-            "max": 7000000.0,
-            "available": 4765.31,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1034.0,
-            "min": 250000.0,
-            "max": 7000000.0,
-            "available": 15910.2,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1034.0,
-            "min": 105000.0,
-            "max": 7000000.0,
-            "available": 14984.61,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1035.24,
-            "min": 100000.0,
-            "max": 7000000.0,
-            "available": 2462.38,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1035.25,
-            "min": 50000.0,
-            "max": 1000000.0,
-            "available": 3268.9,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1035.5,
-            "min": 150000.0,
-            "max": 12000000.0,
-            "available": 2503.74,
-            "platform": "binance",
-            "page": 1
-          }
-        ],
-        "venta": [
-          {
-            "price": 1042.95,
-            "min": 30000.0,
-            "max": 30001.0,
-            "available": 100.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1034.5,
-            "min": 30000.0,
-            "max": 80000.0,
-            "available": 241.23,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1033.0,
-            "min": 50000.0,
-            "max": 115400.0,
-            "available": 113.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1032.67,
-            "min": 85000.0,
-            "max": 86000.0,
-            "available": 178.76,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1032.2,
-            "min": 10000.0,
-            "max": 900000.0,
-            "available": 1828.2351,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 1032.0,
-            "min": 78500.0,
-            "max": 78500.0,
-            "available": 100.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1032.0,
-            "min": 20000.0,
-            "max": 3000000.0,
-            "available": 49636.6725,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 1030.2,
-            "min": 100000.0,
-            "max": 250000.0,
-            "available": 3500.0,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 1030.11,
-            "min": 49000.0,
-            "max": 49001.0,
-            "available": 100.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1030.1,
-            "min": 70000.0,
-            "max": 200000.0,
-            "available": 560.3,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1030.01,
-            "min": 10000.0,
-            "max": 229000.0,
-            "available": 56.78,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1030.0,
-            "min": 10000.0,
-            "max": 200000.0,
-            "available": 80.07,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1029.05,
-            "min": 7500.0,
-            "max": 350000.0,
-            "available": 180.26,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1029.0,
-            "min": 200000.0,
-            "max": 500000.0,
-            "available": 220.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1029.0,
-            "min": 10000.0,
-            "max": 2000000.0,
-            "available": 1943.63,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1029.0,
-            "min": 20000.0,
-            "max": 171793.29,
-            "available": 166.9517,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 1028.7,
-            "min": 50000.0,
-            "max": 190000.0,
-            "available": 300.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1028.5,
-            "min": 7440.0,
-            "max": 9300000.0,
-            "available": 7645.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1028.33,
-            "min": 25000.0,
-            "max": 150000.0,
-            "available": 225.12,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 1028.25,
-            "min": 1838.0,
-            "max": 250000.0,
-            "available": 7717.1798,
-            "platform": "bybit",
-            "page": 1
-          }
-        ]
-      }
-    },
-    "COP": {
-      "code": "COP",
-      "status": "ok",
-      "compra": 3520.1064,
-      "venta": 3395.7752,
-      "spreadPct": -3.53,
-      "mejorCompra": 2999.0,
-      "mejorVenta": 3430.0,
-      "mejorSpreadPct": 14.37,
-      "muestras": {
-        "buy": 80,
-        "sell": 81,
-        "total": 161
-      },
-      "promediosPorPagina": {
-        "compra": {
-          "page1": 3452.4273,
-          "page2": 3591.2562
-        },
-        "venta": {
-          "page1": 3405.102,
-          "page2": 3386.2153
-        }
-      },
-      "porPlataforma": {
-        "binance": {
-          "compra": 3451.4717,
-          "venta": 3414.0949,
-          "muestras": {
-            "compra": 41,
-            "venta": 41
-          }
-        },
-        "bybit": {
-          "compra": 3592.2608,
-          "venta": 3376.9975,
-          "muestras": {
-            "compra": 39,
-            "venta": 40
-          }
-        }
-      },
-      "ads": {
-        "compra": [
-          {
-            "price": 2999.0,
-            "min": 7500.0,
-            "max": 19159.71,
-            "available": 6.3887,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 3435.0,
-            "min": 410000.0,
-            "max": 410001.0,
-            "available": 122.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3436.0,
-            "min": 500000.0,
-            "max": 42000000.0,
-            "available": 354.13,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3437.0,
-            "min": 300000.0,
-            "max": 15000000.0,
-            "available": 150.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3437.96,
-            "min": 2000000.0,
-            "max": 11000000.0,
-            "available": 18924.41,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3437.97,
-            "min": 900000.0,
-            "max": 3000000.0,
-            "available": 4118.9,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3437.97,
-            "min": 500000.0,
-            "max": 3000000.0,
-            "available": 257.15,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3437.98,
-            "min": 500000.0,
-            "max": 10000000.0,
-            "available": 30376.04,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3438.0,
-            "min": 1600000.0,
-            "max": 72000000.0,
-            "available": 469.31,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3438.09,
-            "min": 3000000.0,
-            "max": 28000000.0,
-            "available": 1521.1,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3439.95,
-            "min": 600000.0,
-            "max": 1500000.0,
-            "available": 2158.82,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3439.98,
-            "min": 1000000.0,
-            "max": 3000000.0,
-            "available": 756.63,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3440.0,
-            "min": 1702000.0,
-            "max": 1702000.0,
-            "available": 496.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3446.5,
-            "min": 500000.0,
-            "max": 3000000.0,
-            "available": 248.16,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3446.99,
-            "min": 1100000.0,
-            "max": 3000000.0,
-            "available": 1300.96,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3447.0,
-            "min": 480000.0,
-            "max": 72700000.0,
-            "available": 3781.51,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3448.99,
-            "min": 250000.0,
-            "max": 42000000.0,
-            "available": 650.31,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3449.0,
-            "min": 500000.0,
-            "max": 72700000.0,
-            "available": 3829.98,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3449.9,
-            "min": 100000.0,
-            "max": 1000000.0,
-            "available": 200.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3450.0,
-            "min": 50000.0,
-            "max": 200000.0,
-            "available": 16.02,
-            "platform": "binance",
-            "page": 1
-          }
-        ],
-        "venta": [
-          {
-            "price": 3430.0,
-            "min": 200000.0,
-            "max": 1990000.0,
-            "available": 2869.17,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3428.0,
-            "min": 3000000.0,
-            "max": 29000000.0,
-            "available": 29938.84,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3425.99,
-            "min": 2500000.0,
-            "max": 42000000.0,
-            "available": 28657.08,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3425.0,
-            "min": 35000.0,
-            "max": 75000.0,
-            "available": 303.25,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3423.18,
-            "min": 33600.0,
-            "max": 6666666.0,
-            "available": 137.97,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3423.13,
-            "min": 33600.0,
-            "max": 2355002.0,
-            "available": 609.07,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3422.5,
-            "min": 66752440.0,
-            "max": 66752440.0,
-            "available": 19504.0,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 3422.01,
-            "min": 800000.0,
-            "max": 1500000.0,
-            "available": 438.34,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3422.0,
-            "min": 33600.0,
-            "max": 3000000.0,
-            "available": 263.66,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3421.72,
-            "min": 600000.0,
-            "max": 30000000.0,
-            "available": 673.57,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3420.2,
-            "min": 200000.0,
-            "max": 2800000.0,
-            "available": 1118.06,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3420.16,
-            "min": 2800000.0,
-            "max": 2850000.0,
-            "available": 840.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3420.0,
-            "min": 2000000.0,
-            "max": 72000000.0,
-            "available": 39574.62,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3420.0,
-            "min": 10000.0,
-            "max": 13393.74,
-            "available": 3.9163,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 3419.0,
-            "min": 130000.0,
-            "max": 140000.0,
-            "available": 100.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3418.0,
-            "min": 25000000.0,
-            "max": 70000000.0,
-            "available": 50000.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3418.0,
-            "min": 40000.0,
-            "max": 960000.0,
-            "available": 39.84,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3418.0,
-            "min": 100000.0,
-            "max": 1300000.0,
-            "available": 247.0,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3418.0,
-            "min": 33600.0,
-            "max": 1000000.0,
-            "available": 218.01,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 3417.15,
-            "min": 33600.0,
-            "max": 42000000.0,
-            "available": 337.41,
-            "platform": "binance",
-            "page": 1
-          }
-        ]
-      }
-    },
-    "MXN": {
-      "code": "MXN",
-      "status": "ok",
-      "compra": 19.7122,
-      "venta": 18.864,
-      "spreadPct": -4.3,
-      "mejorCompra": 19.15,
-      "mejorVenta": 19.21,
-      "mejorSpreadPct": 0.31,
+      "mejorVenta": 1038.6,
+      "mejorSpreadPct": 18.56,
       "muestras": {
         "buy": 69,
         "sell": 80,
@@ -1524,26 +786,26 @@
       },
       "promediosPorPagina": {
         "compra": {
-          "page1": 19.429,
-          "page2": 20.1028
+          "page1": 1042.87,
+          "page2": 1080.6103
         },
         "venta": {
-          "page1": 19.122,
-          "page2": 18.606
+          "page1": 1024.7845,
+          "page2": 1000.8755
         }
       },
       "porPlataforma": {
         "binance": {
-          "compra": 19.3502,
-          "venta": 19.137,
+          "compra": 1048.977,
+          "venta": 1029.5902,
           "muestras": {
             "compra": 40,
             "venta": 40
           }
         },
         "bybit": {
-          "compra": 20.2114,
-          "venta": 18.591,
+          "compra": 1072.1869,
+          "venta": 996.0697,
           "muestras": {
             "compra": 29,
             "venta": 40
@@ -1553,324 +815,1062 @@
       "ads": {
         "compra": [
           {
-            "price": 19.15,
-            "min": 3000.0,
-            "max": 15000.0,
-            "available": 2140.06,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 19.25,
-            "min": 3000.0,
-            "max": 15000.0,
-            "available": 4243.1588,
+            "price": 876.0,
+            "min": 1838.0,
+            "max": 2850.32,
+            "available": 3.2538,
             "platform": "bybit",
             "page": 1
           },
           {
-            "price": 19.27,
+            "price": 879.0,
+            "min": 1838.0,
+            "max": 3516.0,
+            "available": 4.0,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 1044.0,
             "min": 10000.0,
-            "max": 272407.0,
-            "available": 14150.47,
+            "max": 7000000.0,
+            "available": 599.07,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.28,
-            "min": 5000.0,
-            "max": 100000.0,
-            "available": 40598.92,
+            "price": 1044.19,
+            "min": 100000.0,
+            "max": 5000000.0,
+            "available": 806.41,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.28,
-            "min": 1000.0,
-            "max": 520200.0,
-            "available": 19569.97,
+            "price": 1044.55,
+            "min": 7500.0,
+            "max": 500000.0,
+            "available": 498.38,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.28,
-            "min": 1000.0,
-            "max": 520000.0,
-            "available": 52388.24,
+            "price": 1045.0,
+            "min": 200000.0,
+            "max": 8500000.0,
+            "available": 278.95,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.29,
-            "min": 2500.0,
-            "max": 100000.0,
-            "available": 335.0,
+            "price": 1045.0,
+            "min": 180000.0,
+            "max": 8000000.0,
+            "available": 3402.95,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.29,
-            "min": 40.0,
-            "max": 3634.88,
-            "available": 188.4336,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 19.3,
-            "min": 5000.0,
-            "max": 50000.0,
-            "available": 5713.41,
+            "price": 1045.0,
+            "min": 300000.0,
+            "max": 5000000.0,
+            "available": 6177.55,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.31,
-            "min": 5000.0,
-            "max": 50000.0,
-            "available": 3000.0,
+            "price": 1045.0,
+            "min": 150000.0,
+            "max": 7000000.0,
+            "available": 8148.91,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.31,
-            "min": 1800.0,
-            "max": 300771.0,
-            "available": 15591.51,
+            "price": 1045.0,
+            "min": 275000.0,
+            "max": 9000000.0,
+            "available": 15830.38,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.31,
-            "min": 2500.0,
-            "max": 125000.0,
-            "available": 60019.4327,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 19.32,
-            "min": 1000.0,
-            "max": 400000.0,
-            "available": 5506.9,
+            "price": 1045.0,
+            "min": 200000.0,
+            "max": 7000000.0,
+            "available": 10233.97,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.32,
-            "min": 5000.0,
-            "max": 520000.0,
-            "available": 79289.56,
+            "price": 1045.2,
+            "min": 25000.0,
+            "max": 1500000.0,
+            "available": 182.99,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.32,
-            "min": 1000.0,
-            "max": 150000.0,
-            "available": 2067.16,
+            "price": 1045.45,
+            "min": 40000.0,
+            "max": 5000000.0,
+            "available": 60.63,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.32,
-            "min": 144.0,
-            "max": 5000.0,
-            "available": 310.0,
+            "price": 1045.47,
+            "min": 100000.0,
+            "max": 7000000.0,
+            "available": 15000.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.32,
-            "min": 1000.0,
-            "max": 520200.0,
-            "available": 33436.31,
+            "price": 1045.47,
+            "min": 100000.0,
+            "max": 7000000.0,
+            "available": 7104.22,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.33,
-            "min": 5000.0,
-            "max": 100000.0,
-            "available": 7920.24,
+            "price": 1045.48,
+            "min": 10000.0,
+            "max": 7000000.0,
+            "available": 10038.53,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.33,
-            "min": 5000.0,
-            "max": 100000.0,
-            "available": 1059.11,
+            "price": 1045.5,
+            "min": 200000.0,
+            "max": 10000000.0,
+            "available": 10478.94,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.33,
-            "min": 3000.0,
-            "max": 360000.0,
-            "available": 746.14,
+            "price": 1045.74,
+            "min": 100000.0,
+            "max": 2439050.0,
+            "available": 2180.76,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1046.87,
+            "min": 140000.0,
+            "max": 7000000.0,
+            "available": 14925.02,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1046.87,
+            "min": 50000.0,
+            "max": 750000.0,
+            "available": 3899.64,
             "platform": "binance",
             "page": 1
           }
         ],
         "venta": [
           {
-            "price": 19.21,
-            "min": 40.0,
-            "max": 5769.0,
-            "available": 300.3128,
+            "price": 1038.6,
+            "min": 50000.0,
+            "max": 204000.0,
+            "available": 1000.0,
             "platform": "bybit",
             "page": 1
           },
           {
-            "price": 19.2,
-            "min": 70000.0,
-            "max": 1355554.56,
-            "available": 70601.8,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 19.19,
-            "min": 3000.0,
-            "max": 18000.0,
-            "available": 336.92,
+            "price": 1038.0,
+            "min": 100000.0,
+            "max": 5000000.0,
+            "available": 100.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.19,
-            "min": 300.0,
-            "max": 130000.0,
-            "available": 6791.56,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 19.19,
-            "min": 1000.0,
-            "max": 40214.13,
-            "available": 2095.5779,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 19.19,
-            "min": 100.0,
-            "max": 1762.99,
-            "available": 91.8707,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 19.18,
-            "min": 6000.0,
-            "max": 7000.0,
-            "available": 364.96,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 19.18,
-            "min": 14000.0,
-            "max": 80556.0,
-            "available": 4200.0,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 19.18,
-            "min": 5000.0,
-            "max": 71425.77,
-            "available": 3723.9714,
-            "platform": "bybit",
-            "page": 1
-          },
-          {
-            "price": 19.17,
-            "min": 9000.0,
-            "max": 12000.0,
-            "available": 646.9,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 19.17,
-            "min": 5000.0,
-            "max": 14000.0,
-            "available": 730.3,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 19.16,
-            "min": 500.0,
-            "max": 180000.0,
-            "available": 8655.27,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 19.16,
+            "price": 1038.0,
             "min": 10000.0,
-            "max": 69947.0,
-            "available": 573.18,
+            "max": 5000000.0,
+            "available": 5297.16,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.16,
-            "min": 11250.0,
-            "max": 11300.0,
-            "available": 589.0,
+            "price": 1037.0,
+            "min": 7444.0,
+            "max": 1200000.0,
+            "available": 600.0,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.16,
+            "price": 1035.0,
+            "min": 100000.0,
+            "max": 500000.0,
+            "available": 991.95,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1035.0,
+            "min": 400000.0,
+            "max": 900000.0,
+            "available": 2500.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1032.9,
+            "min": 10000.0,
+            "max": 150000.0,
+            "available": 150.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1032.57,
+            "min": 100000.0,
+            "max": 500000.0,
+            "available": 500.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1031.38,
+            "min": 100000.0,
+            "max": 1000000.0,
+            "available": 1200.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1031.3,
+            "min": 200000.0,
+            "max": 250000.0,
+            "available": 373.57,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1031.11,
+            "min": 2000.0,
+            "max": 600000.0,
+            "available": 1848.41,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1031.1,
+            "min": 40000.0,
+            "max": 200000.0,
+            "available": 788.92,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1031.02,
+            "min": 200000.0,
+            "max": 8000000.0,
+            "available": 72410.95,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1031.01,
+            "min": 1000000.0,
+            "max": 5000000.0,
+            "available": 79131.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1031.0,
+            "min": 999999.0,
+            "max": 1000000.0,
+            "available": 2000.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1031.0,
+            "min": 250000.0,
+            "max": 6000000.0,
+            "available": 59014.03,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1031.0,
+            "min": 100000.0,
+            "max": 1145000.0,
+            "available": 1105.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1030.64,
+            "min": 50000.0,
+            "max": 1200000.0,
+            "available": 76678.59,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1030.63,
+            "min": 50000.0,
+            "max": 1000000.0,
+            "available": 2592.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 1030.6,
+            "min": 100000.0,
+            "max": 6000000.0,
+            "available": 2354.95,
+            "platform": "binance",
+            "page": 1
+          }
+        ]
+      }
+    },
+    "COP": {
+      "code": "COP",
+      "status": "ok",
+      "compra": 3639.9594,
+      "venta": 3429.714,
+      "spreadPct": -5.78,
+      "mejorCompra": 2999.0,
+      "mejorVenta": 3530.0,
+      "mejorSpreadPct": 17.71,
+      "muestras": {
+        "buy": 66,
+        "sell": 81,
+        "total": 147
+      },
+      "promediosPorPagina": {
+        "compra": {
+          "page1": 3608.0941,
+          "page2": 3692.2184
+        },
+        "venta": {
+          "page1": 3471.5441,
+          "page2": 3386.838
+        }
+      },
+      "porPlataforma": {
+        "binance": {
+          "compra": 3579.5717,
+          "venta": 3491.208,
+          "muestras": {
+            "compra": 41,
+            "venta": 41
+          }
+        },
+        "bybit": {
+          "compra": 3738.9952,
+          "venta": 3366.6825,
+          "muestras": {
+            "compra": 25,
+            "venta": 40
+          }
+        }
+      },
+      "ads": {
+        "compra": [
+          {
+            "price": 2999.0,
+            "min": 7500.0,
+            "max": 9758.14,
+            "available": 3.2538,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 3539.99,
+            "min": 100000.0,
+            "max": 42000000.0,
+            "available": 29.43,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3544.0,
+            "min": 33600.0,
+            "max": 42000000.0,
+            "available": 11.58,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3554.5,
+            "min": 33600.0,
+            "max": 1750000.0,
+            "available": 207.96,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3555.0,
+            "min": 33600.0,
+            "max": 42000000.0,
+            "available": 124.05,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3555.0,
+            "min": 50000.0,
+            "max": 530000.0,
+            "available": 150.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3555.0,
+            "min": 200000.0,
+            "max": 5000000.0,
+            "available": 1230.45,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3561.4,
+            "min": 2000000.0,
+            "max": 11000000.0,
+            "available": 10078.12,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3561.41,
+            "min": 150000.0,
+            "max": 10000000.0,
+            "available": 47238.01,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3561.43,
+            "min": 300000.0,
+            "max": 10000000.0,
+            "available": 7315.44,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3562.0,
+            "min": 600000.0,
+            "max": 7270000.0,
+            "available": 1911.65,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3563.0,
+            "min": 250000.0,
+            "max": 5000000.0,
+            "available": 2018.04,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3564.0,
+            "min": 1500000.0,
+            "max": 20000000.0,
+            "available": 2369.53,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3577.66,
+            "min": 360000.0,
+            "max": 72700000.0,
+            "available": 100.91,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3577.69,
+            "min": 50000.0,
+            "max": 30000000.0,
+            "available": 2126.81,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3577.7,
+            "min": 100000.0,
+            "max": 370000.0,
+            "available": 100.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3578.0,
+            "min": 40000.0,
+            "max": 72700000.0,
+            "available": 158.22,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3578.0,
+            "min": 10000.0,
+            "max": 50000000.0,
+            "available": 1142.38,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3578.89,
+            "min": 100000.0,
+            "max": 30000000.0,
+            "available": 1604.62,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3579.0,
+            "min": 480000.0,
+            "max": 72700000.0,
+            "available": 510.35,
+            "platform": "binance",
+            "page": 1
+          }
+        ],
+        "venta": [
+          {
+            "price": 3530.0,
+            "min": 7486000.0,
+            "max": 7486100.0,
+            "available": 2120.69,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3511.99,
+            "min": 500000.0,
+            "max": 35000000.0,
+            "available": 6432.12,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3511.62,
+            "min": 3000000.0,
+            "max": 15712200.0,
+            "available": 30000.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3511.61,
+            "min": 3000000.0,
+            "max": 23000000.0,
+            "available": 5905.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3511.41,
+            "min": 150000.0,
+            "max": 12000000.0,
+            "available": 39612.53,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3510.02,
+            "min": 36000.0,
+            "max": 1368910.0,
+            "available": 390.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3510.01,
+            "min": 33600.0,
+            "max": 4000000.0,
+            "available": 1709.34,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3509.19,
+            "min": 1000000.0,
+            "max": 15712200.0,
+            "available": 11630.068,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 3509.18,
+            "min": 1000000.0,
+            "max": 43855042.9,
+            "available": 12497.2338,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 3506.13,
+            "min": 100000.0,
+            "max": 2000000.0,
+            "available": 101.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3505.8,
+            "min": 1000000.0,
+            "max": 72700000.0,
+            "available": 49479.67,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3504.0,
+            "min": 3000000.0,
+            "max": 72500000.0,
+            "available": 50000.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3501.99,
+            "min": 33600.0,
+            "max": 33700.0,
+            "available": 100.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3501.0,
+            "min": 100000.0,
+            "max": 2500000.0,
+            "available": 750.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3501.0,
+            "min": 33600.0,
+            "max": 10000000.0,
+            "available": 300.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3500.1,
+            "min": 33600.0,
+            "max": 2100600.0,
+            "available": 600.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3500.0,
+            "min": 1000000.0,
+            "max": 3000000.0,
+            "available": 10000.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3500.0,
+            "min": 33600.0,
+            "max": 80000.0,
+            "available": 152.14,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3500.0,
+            "min": 500000.0,
+            "max": 10000000.0,
+            "available": 1089.4,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 3500.0,
+            "min": 33600.0,
+            "max": 696000.0,
+            "available": 186.06,
+            "platform": "binance",
+            "page": 1
+          }
+        ]
+      }
+    },
+    "MXN": {
+      "code": "MXN",
+      "status": "ok",
+      "compra": 20.1549,
+      "venta": 18.9404,
+      "spreadPct": -6.03,
+      "mejorCompra": 19.65,
+      "mejorVenta": 19.71,
+      "mejorSpreadPct": 0.31,
+      "muestras": {
+        "buy": 63,
+        "sell": 80,
+        "total": 143
+      },
+      "promediosPorPagina": {
+        "compra": {
+          "page1": 20.1017,
+          "page2": 20.2541
+        },
+        "venta": {
+          "page1": 19.3852,
+          "page2": 18.4955
+        }
+      },
+      "porPlataforma": {
+        "binance": {
+          "compra": 19.8851,
+          "venta": 19.1545,
+          "muestras": {
+            "compra": 41,
+            "venta": 40
+          }
+        },
+        "bybit": {
+          "compra": 20.6577,
+          "venta": 18.7263,
+          "muestras": {
+            "compra": 22,
+            "venta": 40
+          }
+        }
+      },
+      "ads": {
+        "compra": [
+          {
+            "price": 19.65,
+            "min": 6900.0,
+            "max": 180000.0,
+            "available": 4246.61,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.68,
+            "min": 150.0,
+            "max": 180000.0,
+            "available": 64.43,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.69,
             "min": 1000.0,
             "max": 520200.0,
-            "available": 77317.72,
+            "available": 26585.18,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.16,
-            "min": 1000.0,
-            "max": 50000.0,
-            "available": 938.65,
+            "price": 19.69,
+            "min": 200.0,
+            "max": 520200.0,
+            "available": 5331.77,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.16,
-            "min": 10000.0,
-            "max": 120000.0,
-            "available": 16111.29,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 19.16,
-            "min": 1000.0,
-            "max": 6000.0,
-            "available": 312.34,
-            "platform": "binance",
-            "page": 1
-          },
-          {
-            "price": 19.16,
+            "price": 19.7,
             "min": 5000.0,
-            "max": 50000.0,
-            "available": 1388.0,
+            "max": 100000.0,
+            "available": 3606.52,
             "platform": "binance",
             "page": 1
           },
           {
-            "price": 19.15,
-            "min": 9600.0,
-            "max": 9700.0,
-            "available": 507.0,
+            "price": 19.7,
+            "min": 300.0,
+            "max": 20000.0,
+            "available": 1495.2,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.73,
+            "min": 300.0,
+            "max": 350000.0,
+            "available": 6118.56,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.76,
+            "min": 3836.0,
+            "max": 177399.0,
+            "available": 6421.64,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.78,
+            "min": 50.0,
+            "max": 20000.0,
+            "available": 1579.59,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.78,
+            "min": 2000.0,
+            "max": 100000.0,
+            "available": 47856.5,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.79,
+            "min": 300.0,
+            "max": 30000.0,
+            "available": 1450.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.79,
+            "min": 100.0,
+            "max": 150000.0,
+            "available": 521.69,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.8,
+            "min": 1000.0,
+            "max": 200000.0,
+            "available": 4029.21,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.82,
+            "min": 2000.0,
+            "max": 520200.0,
+            "available": 30900.86,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.82,
+            "min": 100.0,
+            "max": 19820.0,
+            "available": 1805.23,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 19.83,
+            "min": 2000.0,
+            "max": 100000.0,
+            "available": 25606.1053,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 19.83,
+            "min": 2000.0,
+            "max": 104557.93,
+            "available": 5272.7147,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 19.84,
+            "min": 5000.0,
+            "max": 100000.0,
+            "available": 34877.53,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.84,
+            "min": 1500.0,
+            "max": 520200.0,
+            "available": 30900.86,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.84,
+            "min": 2000.0,
+            "max": 520200.0,
+            "available": 29116.49,
+            "platform": "binance",
+            "page": 1
+          }
+        ],
+        "venta": [
+          {
+            "price": 19.71,
+            "min": 1000.0,
+            "max": 8376.75,
+            "available": 425.0,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 19.68,
+            "min": 600.0,
+            "max": 2300.0,
+            "available": 1000.0,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 19.67,
+            "min": 40.0,
+            "max": 1534.1,
+            "available": 77.992,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 19.61,
+            "min": 144.0,
+            "max": 7990.0,
+            "available": 415.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.58,
+            "min": 20000.0,
+            "max": 1750000.0,
+            "available": 100000.0,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 19.55,
+            "min": 1500.0,
+            "max": 460000.0,
+            "available": 23529.42,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.54,
+            "min": 15000.0,
+            "max": 1750000.0,
+            "available": 100000.0,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 19.53,
+            "min": 20000.0,
+            "max": 520200.0,
+            "available": 78930.07,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.53,
+            "min": 3836.0,
+            "max": 520200.0,
+            "available": 42952.67,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.52,
+            "min": 5000.0,
+            "max": 15000.0,
+            "available": 2500.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.52,
+            "min": 20000.0,
+            "max": 1750000.0,
+            "available": 100000.0,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 19.51,
+            "min": 5000.0,
+            "max": 10000.0,
+            "available": 313.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.5,
+            "min": 3300.0,
+            "max": 3400.0,
+            "available": 174.36,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.5,
+            "min": 3000.0,
+            "max": 6900.0,
+            "available": 353.85,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.5,
+            "min": 700.0,
+            "max": 6240.0,
+            "available": 163.15,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.5,
+            "min": 2000.0,
+            "max": 50000.0,
+            "available": 1271.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.5,
+            "min": 10000.0,
+            "max": 1750000.0,
+            "available": 99329.897,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 19.5,
+            "min": 10000.0,
+            "max": 1750000.0,
+            "available": 100000.0,
+            "platform": "bybit",
+            "page": 1
+          },
+          {
+            "price": 19.49,
+            "min": 144.0,
+            "max": 100000.0,
+            "available": 4000.0,
+            "platform": "binance",
+            "page": 1
+          },
+          {
+            "price": 19.48,
+            "min": 1400.0,
+            "max": 460000.0,
+            "available": 23613.97,
             "platform": "binance",
             "page": 1
           }
@@ -1879,16 +1879,16 @@
     }
   },
   "vesDetail": {
-    "compraTotal": 1095.935,
-    "ventaTotal": 1084.0342,
-    "mejorPrecioCompra": 1087.0,
-    "mejorPrecioVenta": 1101.059,
-    "compraPromP1": 1093.9495,
-    "compraPromP2": 1097.9701,
-    "ventaPromP1": 1085.229,
-    "ventaPromP2": 1082.8094,
-    "spreadTotal": -1.09,
-    "spreadMejores": 1.29,
+    "compraTotal": 1125.5868,
+    "ventaTotal": 1082.2375,
+    "mejorPrecioCompra": 1100.0,
+    "mejorPrecioVenta": 1110.0,
+    "compraPromP1": 1111.167,
+    "compraPromP2": 1140.3671,
+    "ventaPromP1": 1095.2602,
+    "ventaPromP2": 1068.8892,
+    "spreadTotal": -3.85,
+    "spreadMejores": 0.91,
     "muestras": {
       "compra": 81,
       "venta": 81
@@ -1896,92 +1896,92 @@
     "status": "ok"
   },
   "eurRef": {
-    "usd": 1.099,
-    "ves": 1011.1795,
-    "vesImplicito": 1010.8851,
-    "diffPct": 0.03,
+    "usd": 1.0935,
+    "ves": 1011.7325,
+    "vesImplicito": 1010.7804,
+    "diffPct": 0.09,
     "source": "frankfurter",
-    "fetchedAt": "2026-11-22T19:33:39Z",
+    "fetchedAt": "2026-11-26T10:53:47Z",
     "status": "ok"
   },
   "cross": {
     "BCV USD → Binance VES": {
-      "origen": 919.8227,
-      "destino": 1088.8873,
-      "pctVariacion": 18.38
+      "origen": 924.3534,
+      "destino": 1098.3595,
+      "pctVariacion": 18.82
     },
     "BCV USD → Bybit VES": {
-      "origen": 919.8227,
-      "destino": 1079.0597,
-      "pctVariacion": 17.31
+      "origen": 924.3534,
+      "destino": 1065.7125,
+      "pctVariacion": 15.29
     },
     "Binance VES → Bybit VES": {
-      "origen": 1088.8873,
-      "destino": 1079.0597,
-      "pctVariacion": -0.9
+      "origen": 1098.3595,
+      "destino": 1065.7125,
+      "pctVariacion": -2.97
     },
     "BCV USD → BCV EUR": {
-      "origen": 919.8227,
-      "destino": 1011.17949056,
-      "pctVariacion": 9.93
+      "origen": 924.3534,
+      "destino": 1011.7325269,
+      "pctVariacion": 9.45
     },
     "BCV EUR → Binance VES": {
-      "origen": 1011.17949056,
-      "destino": 1088.8873,
-      "pctVariacion": 7.68
+      "origen": 1011.7325269,
+      "destino": 1098.3595,
+      "pctVariacion": 8.56
     },
     "BCV EUR → Bybit VES": {
-      "origen": 1011.17949056,
-      "destino": 1079.0597,
-      "pctVariacion": 6.71
+      "origen": 1011.7325269,
+      "destino": 1065.7125,
+      "pctVariacion": 5.34
     }
   },
   "variations": [
     {
       "name": "BCV USD → Binance VES",
-      "pct": 18.38
+      "pct": 18.82
     },
     {
       "name": "BCV USD → Bybit VES",
-      "pct": 17.31
+      "pct": 15.29
     },
     {
       "name": "Binance VES → Bybit VES",
-      "pct": -0.9
+      "pct": -2.97
     },
     {
       "name": "BCV USD → BCV EUR",
-      "pct": 9.93
+      "pct": 9.45
     },
     {
       "name": "BCV EUR → Binance VES",
-      "pct": 7.68
+      "pct": 8.56
     },
     {
       "name": "BCV EUR → Bybit VES",
-      "pct": 6.71
+      "pct": 5.34
     }
   ],
   "purchasingPower": [
     {
       "name": "BCV USD → Binance VES",
-      "lossPct": 15.53,
-      "factor": 1.1838
+      "lossPct": 15.84,
+      "factor": 1.1882
     },
     {
       "name": "BCV USD → Bybit VES",
-      "lossPct": 14.76,
-      "factor": 1.1731
+      "lossPct": 13.26,
+      "factor": 1.1529
     },
     {
       "name": "BCV EUR → Binance VES",
-      "lossPct": 7.14,
-      "factor": 1.0768
+      "lossPct": 7.89,
+      "factor": 1.0856
     },
     {
       "name": "BCV EUR → Bybit VES",
-      "lossPct": 6.29,
-      "factor": 1.0671
+      "lossPct": 5.07,
+      "factor": 1.0534
     }
   ],
   "diagnostics": {
@@ -1995,7 +1995,7 @@
       "ok": 20,
       "fallos": 0
     },
-    "elapsedSeconds": 12.83,
+    "elapsedSeconds": 10.35,
     "pagePromedios": "media simple (fmean) por página y lado; promediosPorPagina usa solo la página indicada"
   },
   "warnings": [],
