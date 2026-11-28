@@ -1472,6 +1472,21 @@
       // movements comparte el array con S.ledger: persistimos el ledger real.
       globalThis.CTEngine.save(S.ledger);
       toast('Operación registrada (movimiento #' + r.movement.seq + ').');
+      // Congelar botón de registrar y mostrar "Nueva operación"
+      var registrarBtn = holder.querySelector('[data-action="registrar"]');
+      if (registrarBtn) {
+        registrarBtn.disabled = true;
+        registrarBtn.textContent = 'Nueva operación';
+        registrarBtn.onclick = function () {
+          registrarBtn.disabled = false;
+          registrarBtn.textContent = 'Registrar operación';
+          registrarBtn.onclick = null;
+          registrarBtn.addEventListener('click', function(e2) {
+            const t2 = e2.target && e2.target.closest ? e2.target.closest('[data-action="registrar"]') : null;
+            if (t2) registrarCaso();
+          });
+        };
+      }
       renderCuentas();
       renderBalance();
       renderHistorico();
@@ -1849,6 +1864,66 @@
   }
 
   // === Sugerencias de conversión para cubrir déficit de saldo ===
+  // ==================== Crear reversa de movimiento (corregir operación) ====================
+  function createReversal(originalMv) {
+    var eng = globalThis.CTEngine;
+    if (!originalMv || !originalMv.type) return null;
+
+    var reversal = {
+      date: todayISO(),
+      type: 'operation', // las reversas de casos P2P son operaciones
+      in: null,
+      out: null,
+      meta: {},
+      note: 'REVERSA #' + originalMv.seq + ': ' + (originalMv.note || originalMv.type)
+    };
+
+    // Invertir in/out para la reversa
+    if (originalMv.in) {
+      reversal.out = {
+        account: originalMv.in.account,
+        currency: originalMv.in.currency,
+        amount: originalMv.in.amount
+      };
+    }
+    if (originalMv.out) {
+      reversal.in = {
+        account: originalMv.out.account,
+        currency: originalMv.out.currency,
+        amount: originalMv.out.amount
+      };
+    }
+
+    // Si era un caso P2P, copiar el meta del caso
+    if (originalMv.meta && originalMv.meta.case) {
+      reversal.meta.case = Object.assign({}, originalMv.meta.case, {
+        direction: originalMv.meta.case.direction === 'AB' ? 'BA' : 'AB'
+      });
+    }
+
+    // Si era una contribución, la reversa es un retiro (y viceversa)
+    if (originalMv.type === 'contribution') {
+      reversal.type = 'withdrawal';
+      reversal.out = { account: originalMv.in.account, currency: originalMv.in.currency, amount: originalMv.in.amount };
+    } else if (originalMv.type === 'withdrawal') {
+      reversal.type = 'contribution';
+      reversal.in = { account: originalMv.out.account, currency: originalMv.out.currency, amount: originalMv.out.amount };
+    } else if (originalMv.type === 'transfer' || originalMv.type === 'exchange') {
+      // Para transferencias/conversiones: invertir in/out completamente
+      reversal.type = originalMv.type;
+      var tmpIn = reversal.in;
+      reversal.in = originalMv.out ? { account: originalMv.out.account, currency: originalMv.out.currency, amount: originalMv.out.amount, rateAt: originalMv.out.rateAt } : null;
+      reversal.out = originalMv.in ? { account: originalMv.in.account, currency: originalMv.in.currency, amount: originalMv.in.amount, rateAt: originalMv.in.rateAt } : null;
+    }
+
+    if (!reversal.in && !reversal.out) {
+      console.error('No se puede generar reversa de tipo: ' + originalMv.type);
+      return null;
+    }
+
+    return reversal;
+  }
+
   function findConversionsForDeficit(deficitAmount, deficitCurrency, excludeAccountId, quote) {
     var eng = globalThis.CTEngine;
     var suggestions = [];
@@ -2473,15 +2548,41 @@
             esc((m.meta.case.pair || []).join('/') + ' ' + (m.meta.case.direction || '') +
               ' · plusvalía ' + fmt(m.meta.case.profitUsd, 2) + ' · neto ' + fmt(m.meta.case.neto, 2)) + '</span></div>'
           : '';
-        return '<div class="opcard"><div class="ophead">' +
+        return '<div class="opcard" data-mv-seq="' + esc(m.seq) + '"><div class="ophead">' +
           '<span class="pair num">#' + esc(m.seq) + ' · ' + esc(m.date || 'sin fecha') + ' · ' + esc(m.type) + '</span>' +
+          '<button type="button" class="btn btn-small btn-danger" data-correct-seq="' + esc(m.seq) + '">Corregir</button>' +
           '</div>' + leg('in', 'Entra') + leg('out', 'Sale') + caseInfo +
           (m.note ? '<p class="opobs">' + esc(m.note) + '</p>' : '') +
           '<p class="muted hint mono">hash ' + esc(String(m.hash).slice(0, 12)) + '… · prev ' + esc(String(m.prevHash).slice(0, 8)) + '…</p>' +
           '</div>';
       }).join('') || '<p class="muted hint">Sin movimientos con estos filtros.</p>';
     }
-    renderChainStatus();
+    // Bind correction buttons in historico list
+    list.querySelectorAll('[data-correct-seq]').forEach(function (btn) {
+      if (!btn.dataset.bound) {
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', function () {
+          var seq = parseInt(btn.getAttribute('data-correct-seq'), 10);
+          if (isNaN(seq)) return;
+          var mv = S.ledger.movements.filter(function (m) { return m.seq === seq; })[0];
+          if (!mv) { toast('Movimiento no encontrado.'); return; }
+          if (!globalThis.confirm || !window.confirm('¿Crear reversa de movimiento #' + seq + ' (' + mv.type + ')? Esto no borra el original: se agrega una reversa al final del libro.')) return;
+          try {
+            var reversal = createReversal(mv);
+            if (reversal) {
+              eng.appendMovement(S.ledger, reversal);
+              eng.save(S.ledger);
+              toast('Reversa de #' + seq + ' registrada (movimiento #' + reversal.seq + ').');
+              renderHistorico();
+            }
+          } catch (e) {
+            toast('No se pudo registrar reversa: ' + e.message);
+          }
+        });
+      }
+    });
+
+  renderChainStatus();
     renderMigrateButton();
   }
   CT.renderHistorico = renderHistorico;

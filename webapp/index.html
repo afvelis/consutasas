@@ -338,6 +338,27 @@
         <button type="button" id="hist-migrar" class="btn btn-big" hidden>Migrar operaciones v1</button>
         <div id="hist-migrar-result" aria-live="polite"></div>
       </div>
+
+      <!-- Corregir operación (protocolo para operaciones mal registradas) -->
+      <div class="card">
+        <h2>⚠️ Corregir operación</h2>
+        <p class="muted hint">
+          El libro es <strong>append-only</strong> con cadena SHA-256: <strong>no se pueden borrar ni editar</strong> operaciones. Para corregir una
+          operación mal registrada, se crea un movimiento de reversa que la anula. El protocolo es:
+        </p>
+        <ol>
+          <li>Identificá la operación incorrecta en la lista (buscá por seq o fecha).</li>
+          <li>Pulsá <strong>«Corregir»</strong> en la fila de esa operación.</li>
+          <li>El sistema generará un movimiento de reversa con los montos invertidos.</li>
+          <li>Confirmá la reversa (pedirá confirmación).</li>
+        </ol>
+        <p class="muted hint">
+          Si la operación fue un caso P2P, la reversa será otro caso con in/out invertidos.
+          Si fue un aporte/retiro, la reversa será el movimiento opuesto (aporte↔retiro).
+          <strong>La cadena SHA-256 queda íntegra y auditable.</strong>
+        </p>
+        <div id="hist-corregir-panel" aria-live="polite"></div>
+      </div>
     </section>
 
     <!-- ============ 5) TASAS (+ Comprobador como panel) ============ -->
