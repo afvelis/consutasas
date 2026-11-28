@@ -609,9 +609,88 @@ body.phone-mode .navbtn {
     gap: 12px;
     min-width: 0;
   }
+  /* CUENTAS — dialogs de capital y tabla de movimientos */
+  body:not(.phone-mode) .dialog-capital {
+    grid-column: 1 / -1;
+  }
+  body:not(.phone-mode) #capital-movimientos {
+    grid-column: 1 / -1;
+  }
+  body:not(.phone-mode) .mov-table {
+    font-size: 0.85em;
+  }
 }
 
 /* TASAS en escritorio ancho: grid de 3 columnas para las cards de tasas. */
 @media (min-width: 1100px) {
   body:not(.phone-mode) #tab-tasas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ============ MOVIMIENTOS DE CAPITAL ============ */
+
+/* Dialogs de capital */
+.dialog-capital {
+  border-left: 3px solid var(--primary, #4f46e5);
+  animation: dialog-slide 0.2s ease-out;
+}
+@keyframes dialog-slide {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Tabla de movimientos de capital */
+.mov-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+  margin-top: 8px;
+}
+.mov-table th,
+.mov-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border, #333);
+  vertical-align: top;
+}
+.mov-table th {
+  font-weight: 600;
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted, #999);
+}
+.mov-table td {
+  word-break: break-word;
+}
+.mov-table tbody tr:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+/* Botones de acción rápida en cuentas */
+.btn-add { background: #10b981; color: #fff; }
+.btn-add:hover { background: #059669; }
+.btn-warning { background: #d97706; color: #fff; }
+.btn-warning:hover { background: #b45309; }
+.btn-danger { background: #dc2626; color: #fff; }
+.btn-danger:hover { background: #b91c1c; }
+
+/* Info de saldo live en dialog de retiro */
+#withdraw-saldo-info {
+  font-size: 0.85em;
+  color: var(--muted, #999);
+}
+
+/* Info de moneda en dialog de conversión */
+#convert-currency-info {
+  font-size: 0.85em;
+  color: var(--muted, #999);
+  font-style: italic;
+}
+
+/* Grid de acciones rápidas */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
 }

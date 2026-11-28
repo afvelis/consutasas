@@ -1345,6 +1345,62 @@
     if (!q.ok) {
       html = '<div class="card"><p class="warnline">⚠ ' + esc(q.error || 'No se pudo cotizar el caso.') + '</p></div>';
     } else {
+
+      // === Balance check: verificar si las cuentas seleccionadas tienen saldo suficiente ===
+      var inAccId = (el('casos-cuenta-in') && el('casos-cuenta-in').value) || null;
+      var outAccId = (el('casos-cuenta-out') && el('casos-cuenta-out').value) || null;
+      var eng = globalThis.CTEngine;
+      var alertsHtml = '';
+
+      // Check deposit account (inAccount) — cuánto necesita el caso
+      var depositNeed = reverse ? null : q.deposit;
+      var deliveredNeed = reverse ? q.delivered : null;
+      if (depositNeed != null && inAccId) {
+        var inBal = eng.accountBalance(S.ledger, inAccId);
+        if (inBal && inBal.native < depositNeed - 1e-9) {
+          var deficitIn = depositNeed - inBal.native;
+          var inName = eng.accountById(S.ledger, inAccId) ? eng.accountById(S.ledger, inAccId).name : '—';
+          var suggestions = findConversionsForDeficit(deficitIn, c.currencyIn, inAccId, q);
+          alertsHtml += '<div class="card alert-insuf"><h3>⚠️ SALDO INSUFICIENTE</h3>';
+          alertsHtml += '<p>Cuenta <strong>' + esc(inName) + '</strong> (' + c.currencyIn + '): saldo ' +
+            esc(fmtMoney(inBal.native, c.currencyIn)) + ', el caso necesita ' + esc(fmtMoney(depositNeed, c.currencyIn)) +
+            ' — <strong>faltan ' + esc(fmtMoney(deficitIn, c.currencyIn)) + '</strong></p>';
+          if (suggestions.length) {
+            alertsHtml += '<p><strong>Sugerencias de conversión (ordenadas por eficiencia):</strong></p>';
+            alertsHtml += '<ul class="suggestion-list">' + suggestions.map(function (s) {
+              return '<li>' + esc(s.text) +
+                ' <button type="button" class="btn btn-small" data-conv-suggestion="' + esc(JSON.stringify(s)) + '">Usar esta conversión</button></li>';
+            }).join('') + '</ul>';
+          } else {
+            alertsHtml += '<p class="muted hint">No se encontraron cuentas con saldo suficiente para cubrir el déficit.</p>';
+          }
+          alertsHtml += '<p class="muted hint">Puedes ignorar esta advertencia si el depósito se hace en efectivo o desde cuenta externa al sistema.</p>';
+          alertsHtml += '</div>';
+        }
+      }
+
+      // Check deliver account (outAccount) — cuánto se debe entregar
+      if (deliveredNeed != null && outAccId) {
+        var outBal = eng.accountBalance(S.ledger, outAccId);
+        if (outBal && outBal.native < deliveredNeed - 1e-9) {
+          var deficitOut = deliveredNeed - outBal.native;
+          var outName = eng.accountById(S.ledger, outAccId) ? eng.accountById(S.ledger, outAccId).name : '—';
+          var suggestions2 = findConversionsForDeficit(deficitOut, c.currencyOut, outAccId, q);
+          alertsHtml += '<div class="card alert-insuf"><h3>⚠️ SALDO INSUFICIENTE</h3>';
+          alertsHtml += '<p>Cuenta <strong>' + esc(outName) + '</strong> (' + c.currencyOut + '): saldo ' +
+            esc(fmtMoney(outBal.native, c.currencyOut)) + ', el caso requiere entregar ' + esc(fmtMoney(deliveredNeed, c.currencyOut)) +
+            ' — <strong>faltan ' + esc(fmtMoney(deficitOut, c.currencyOut)) + '</strong></p>';
+          if (suggestions2.length) {
+            alertsHtml += '<p><strong>Sugerencias de conversión:</strong></p>';
+            alertsHtml += '<ul class="suggestion-list">' + suggestions2.map(function (s) {
+              return '<li>' + esc(s.text) +
+                ' <button type="button" class="btn btn-small" data-conv-suggestion="' + esc(JSON.stringify(s)) + '">Usar esta conversión</button></li>';
+            }).join('') + '</ul>';
+          }
+          alertsHtml += '</div>';
+        }
+      }
+
       html = '<div class="card"><h2>Desglose del caso</h2>' +
         '<div class="grid2">' + casoRows(q, c).map(function (row) {
           return '<div class="kv"><span class="k">' + esc(row[0]) + '</span><span class="v' +
@@ -1353,10 +1409,23 @@
         '<p class="muted hint">' + snapshotLine() + '</p>';
       const avisos = relevantWarnings(q, c);
       if (avisos.length) html += avisos.map(function (a) { return '<p class="warnline">⚠ ' + esc(a) + '</p>'; }).join('');
+      if (alertsHtml) html += alertsHtml;
       html += '<button type="button" class="btn btn-primary btn-big" data-action="registrar">Registrar operación</button>' +
         '</div>';
     }
     holder.innerHTML = html;
+    // Bind conv-suggestion buttons
+    holder.querySelectorAll('[data-conv-suggestion]').forEach(function (btn) {
+      if (!btn.dataset.bound) {
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', function () {
+          try {
+            var s = JSON.parse(btn.getAttribute('data-conv-suggestion'));
+            executeConversionSuggestion(s);
+          } catch (e) { toast('Error al procesar sugerencia: ' + e.message); }
+        });
+      }
+    });
     renderEurPanel();
   }
 
@@ -1655,6 +1724,435 @@
     renderResultadoSafe();
   }
   CT.accountAction = accountAction;
+
+  // ==================== Movimientos de capital ====================
+
+  function showDialog(id) {
+    ['dialog-contrib', 'dialog-withdraw', 'dialog-convert'].forEach(function (d) {
+      var el = el(d);
+      if (el) el.hidden = (d !== id);
+    });
+  }
+
+  function hideAllDialogs() {
+    showDialog(null);
+  }
+
+  function fillAccountSelect(selId, currency) {
+    var sel = el(selId);
+    if (!sel) return;
+    sel.disabled = false;
+    var eng = globalThis.CTEngine;
+    var list = S.ledger.accounts.filter(function (a) { return !a.archived; });
+    if (currency) list = list.filter(function (a) { return a.currency === currency; });
+    sel.innerHTML = list.map(function (a) {
+      return '<option value="' + esc(a.id) + '">' + esc(a.name) + ' (' + esc(a.currency) + ')</option>';
+    }).join('') || '<option value="">— sin cuentas —</option>';
+  }
+
+  function todayISO() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function createContribution(accountId, amount, origin, rate, date) {
+    var eng = globalThis.CTEngine;
+    var acc = eng.accountById(S.ledger, accountId);
+    if (!acc) { toast('Cuenta no encontrada.'); return false; }
+    if (amount <= 0) { toast('Monto debe ser > 0.'); return false; }
+    var mv = {
+      date: date || todayISO(),
+      type: 'contribution',
+      in: { account: accountId, currency: acc.currency, amount: amount },
+      note: (origin || '').trim() || ('Aporte de ' + acc.currency)
+    };
+    if (rate && Number.isFinite(rate) && rate > 0) {
+      mv.in.rateAt = Number(rate);
+    }
+    try {
+      eng.appendMovement(S.ledger, mv);
+      eng.save(S.ledger);
+      toast('Contribución de ' + acc.currency + ' ' + fmtMoney(amount, acc.currency) + ' registrada.');
+      afterLedgerMutation();
+      return true;
+    } catch (e) {
+      toast('No se pudo registrar: ' + e.message);
+      return false;
+    }
+  }
+
+  function createWithdrawal(accountId, amount, destination, rate, date) {
+    var eng = globalThis.CTEngine;
+    var acc = eng.accountById(S.ledger, accountId);
+    if (!acc) { toast('Cuenta no encontrada.'); return false; }
+    if (amount <= 0) { toast('Monto debe ser > 0.'); return false; }
+    var bal = eng.accountBalance(S.ledger, accountId);
+    if (amount > bal.native + 1e-9) {
+      toast('⚠️ Saldo insuficiente: ' + acc.name + ' tiene ' + fmtMoney(bal.native, acc.currency) + ', intentas retirar ' + fmtMoney(amount, acc.currency));
+      return false;
+    }
+    var mv = {
+      date: date || todayISO(),
+      type: 'withdrawal',
+      out: { account: accountId, currency: acc.currency, amount: amount },
+      note: (destination || '').trim() || ('Retiro de ' + acc.currency)
+    };
+    if (rate && Number.isFinite(rate) && rate > 0) {
+      mv.out.rateAt = Number(rate);
+    }
+    try {
+      eng.appendMovement(S.ledger, mv);
+      eng.save(S.ledger);
+      toast('Retiro de ' + acc.currency + ' ' + fmtMoney(amount, acc.currency) + ' registrado.');
+      afterLedgerMutation();
+      return true;
+    } catch (e) {
+      toast('No se pudo registrar: ' + e.message);
+      return false;
+    }
+  }
+
+  function createExchange(fromId, toId, fromAmount, rate, date) {
+    var eng = globalThis.CTEngine;
+    var fromAcc = eng.accountById(S.ledger, fromId);
+    var toAcc = eng.accountById(S.ledger, toId);
+    if (!fromAcc) { toast('Cuenta origen no encontrada.'); return false; }
+    if (!toAcc) { toast('Cuenta destino no encontrada.'); return false; }
+    if (fromAmount <= 0) { toast('Monto origen debe ser > 0.'); return false; }
+    if (rate <= 0) { toast('Tasa debe ser > 0.'); return false; }
+    var fromBal = eng.accountBalance(S.ledger, fromId);
+    if (fromAmount > fromBal.native + 1e-9) {
+      toast('⚠️ Saldo insuficiente: ' + fromAcc.name + ' tiene ' + fmtMoney(fromBal.native, fromAcc.currency) + ', intentas convertir ' + fmtMoney(fromAmount, fromAcc.currency));
+      return false;
+    }
+    var delivered = fromAmount * rate;
+    var mv = {
+      date: date || todayISO(),
+      type: fromAcc.currency === toAcc.currency ? 'transfer' : 'exchange',
+      out: { account: fromId, currency: fromAcc.currency, amount: fromAmount, rateAt: rate },
+      in: { account: toId, currency: toAcc.currency, amount: delivered, rateAt: rate }
+    };
+    try {
+      eng.appendMovement(S.ledger, mv);
+      eng.save(S.ledger);
+      var curOut = fmtMoney(fromAmount, fromAcc.currency);
+      var curIn = fmtMoney(delivered, toAcc.currency);
+      toast(fromAcc.currency === toAcc.currency
+        ? 'Transferencia de ' + curOut + ' a ' + curIn + ' registrada.'
+        : 'Conversión de ' + curOut + ' a ' + curIn + ' registrada.');
+      afterLedgerMutation();
+      return true;
+    } catch (e) {
+      toast('No se pudo registrar: ' + e.message);
+      return false;
+    }
+  }
+
+  // === Sugerencias de conversión para cubrir déficit de saldo ===
+  function findConversionsForDeficit(deficitAmount, deficitCurrency, excludeAccountId, quote) {
+    var eng = globalThis.CTEngine;
+    var suggestions = [];
+    var fx = S.fx;
+    if (!fx) return suggestions;
+
+    S.ledger.accounts.forEach(function (acc) {
+      if (acc.archived || acc.id === excludeAccountId) return;
+      if (acc.currency === deficitCurrency) return; // misma moneda no ayuda
+      var bal = eng.accountBalance(S.ledger, acc.id);
+      if (!bal || bal.native <= 0) return;
+
+      // Tasa actual de venta para esta moneda (cuántos deficitCurrency por 1 unidad de acc.currency)
+      var sellRate = eng.unitPerUsdOf(fx, deficitCurrency) && eng.unitPerUsdOf(fx, acc.currency)
+        ? eng.unitPerUsdOf(fx, deficitCurrency) / eng.unitPerUsdOf(fx, acc.currency)
+        : null;
+      if (!sellRate || sellRate <= 0) return;
+
+      var amountDelivered = bal.native * sellRate;
+      if (amountDelivered < deficitAmount - 1e-9) return; // no cubre el déficit
+
+      var accName = eng.accountById(S.ledger, acc.id) ? eng.accountById(S.ledger, acc.id).name : acc.name;
+      var needed = Math.ceil(deficitAmount / sellRate * 100) / 100; // mínima cantidad de acc.currency necesaria
+      var actualFrom = Math.min(bal.native, needed);
+      var actualDelivered = actualFrom * sellRate;
+
+      suggestions.push({
+        fromAccId: acc.id,
+        fromAccName: accName,
+        fromCurrency: acc.currency,
+        toCurrency: deficitCurrency,
+        amountFrom: actualFrom,
+        amountDelivered: actualDelivered,
+        rate: sellRate,
+        coversDeficit: amountDelivered >= deficitAmount,
+        text: accName + ' (' + acc.currency + '): saldo ' + fmtMoney(bal.native, acc.currency) +
+          ' → a tasa ' + fmt(sellRate, 4) + ' = ' + fmtMoney(amountDelivered, deficitCurrency) +
+          (amountDelivered >= deficitAmount ? ' ✓ cubre' : ' ✗ no cubre todo'),
+        partial: amountDelivered > deficitAmount
+      });
+    });
+
+    // Ordenar: primero los que cubren todo el déficit, luego por menor cantidad necesaria
+    suggestions.sort(function (a, b) {
+      if (a.coversDeficit !== b.coversDeficit) return a.coversDeficit ? -1 : 1;
+      return a.amountFrom - b.amountFrom;
+    });
+
+    return suggestions;
+  }
+
+  function executeConversionSuggestion(s) {
+    if (!s || !s.fromAccId) return;
+    // Confirmar
+    var msg = 'Convertir ' + fmtMoney(s.amountFrom, s.fromCurrency) + ' de ' + s.fromAccName +
+      ' a ' + fmtMoney(s.amountDelivered, s.toCurrency) + ' a tasa ' + fmt(s.rate, 4) + '?';
+    if (!window.confirm(msg)) return;
+    var date = todayISO();
+    if (createExchange(s.fromAccId, null, s.amountFrom, s.rate, date)) {
+      toast('Conversión registrada. Recargando...');
+      // Re-render para reflejar cambios
+      afterLedgerMutation();
+    } else {
+      toast('No se pudo registrar la conversión.');
+    }
+  }
+
+  function renderCapitalMovements() {
+    var container = el('capital-movimientos');
+    var listEl = el('capital-lista');
+    if (!container || !listEl || !S.ledger) return;
+    var eng = globalThis.CTEngine;
+    var tipo = (el('capital-tipo') && el('capital-tipo').value) || 'all';
+    var capitalTypes = ['contribution', 'withdrawal', 'transfer', 'exchange'];
+    var movs = S.ledger.movements.filter(function (m) {
+      if (capitalTypes.indexOf(m.type) === -1) return false;
+      if (tipo !== 'all' && m.type !== tipo) return false;
+      return true;
+    }).reverse();
+
+    if (!movs.length) {
+      container.hidden = true;
+      listEl.innerHTML = '<p class="muted hint">Sin movimientos de capital.</p>';
+      return;
+    }
+
+    container.hidden = false;
+    var html = '<table class="mov-table">' +
+      '<thead><tr>' +
+      '<th>Fecha</th><th>Tipo</th><th>Cuenta</th><th>Monto</th><th>Tasa</th><th>Nota</th>' +
+      '</tr></thead><tbody>' +
+      movs.map(function (m) {
+        var typeLabel = { contribution: 'Aporte', withdrawal: 'Retiro', transfer: 'Transfer.', exchange: 'Conversión' }[m.type] || m.type;
+        var fromAcc = m.out ? (eng.accountById(S.ledger, m.out.account) || {}) : {};
+        var toAcc = m.in ? (eng.accountById(S.ledger, m.in.account) || {}) : {};
+        var fromName = fromAcc.name || '—';
+        var toName = toAcc.name || '—';
+        var note = esc(m.note || '');
+        var rateDisplay = (m.out && m.out.rateAt != null) ? esc(fmt(m.out.rateAt, 4)) : '—';
+        return '<tr>' +
+          '<td>' + esc(m.date || '') + '</td>' +
+          '<td>' + esc(typeLabel) + '</td>' +
+          '<td>' + esc(fromName) + (m.in ? ' → ' + esc(toName) : '') + '</td>' +
+          '<td>' + esc(fmtMoney(m.out ? m.out.amount : (m.in && m.in.amount), fromAcc.currency || toAcc.currency)) + '</td>' +
+          '<td>' + rateDisplay + '</td>' +
+          '<td>' + note + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table>';
+    listEl.innerHTML = html;
+  }
+
+  function bindCapitalForms() {
+    var eng = globalThis.CTEngine;
+
+    // ---- Botones rápidos ----
+    var btnContrib = el('btn-contrib');
+    if (btnContrib && !btnContrib.dataset.bound) {
+      btnContrib.dataset.bound = '1';
+      btnContrib.addEventListener('click', function () {
+        // Pre-seleccionar la cuenta primaria si existe
+        var primary = S.ledger.accounts.filter(function (a) { return !a.archived && a.primary; })[0];
+        fillAccountSelect('contrib-cuenta', primary && primary.currency);
+        if (primary) el('contrib-cuenta').value = primary.id;
+        el('contrib-fecha').value = todayISO();
+        el('contrib-monto').value = '';
+        el('contrib-origen').value = '';
+        el('contrib-tasa').value = '';
+        el('contrib-msg').textContent = '';
+        showDialog('dialog-contrib');
+      });
+    }
+
+    var btnWithdraw = el('btn-withdraw');
+    if (btnWithdraw && !btnWithdraw.dataset.bound) {
+      btnWithdraw.dataset.bound = '1';
+      btnWithdraw.addEventListener('click', function () {
+        fillAccountSelect('withdraw-cuenta');
+        el('withdraw-fecha').value = todayISO();
+        el('withdraw-monto').value = '';
+        el('withdraw-destino').value = '';
+        el('withdraw-tasa').value = '';
+        el('withdraw-msg').textContent = '';
+        el('withdraw-saldo-info').textContent = '';
+        showDialog('dialog-withdraw');
+      });
+    }
+
+    var btnConvert = el('btn-convert');
+    if (btnConvert && !btnConvert.dataset.bound) {
+      btnConvert.dataset.bound = '1';
+      btnConvert.addEventListener('click', function () {
+        fillAccountSelect('convert-cuenta-from');
+        fillAccountSelect('convert-cuenta-to');
+        el('convert-fecha').value = todayISO();
+        el('convert-monto-from').value = '';
+        el('convert-tasa').value = '';
+        el('convert-monto-to').value = '';
+        el('convert-nota').value = '';
+        el('convert-msg').textContent = '';
+        el('convert-currency-info').textContent = '';
+        showDialog('dialog-convert');
+      });
+    }
+
+    // ---- Cancelar dialogs ----
+    var contribCancel = el('contrib-cancel');
+    if (contribCancel && !contribCancel.dataset.bound) {
+      contribCancel.dataset.bound = '1';
+      contribCancel.addEventListener('click', function () { hideAllDialogs(); });
+    }
+    var withdrawCancel = el('withdraw-cancel');
+    if (withdrawCancel && !withdrawCancel.dataset.bound) {
+      withdrawCancel.dataset.bound = '1';
+      withdrawCancel.addEventListener('click', function () { hideAllDialogs(); });
+    }
+    var convertCancel = el('convert-cancel');
+    if (convertCancel && !convertCancel.dataset.bound) {
+      convertCancel.dataset.bound = '1';
+      convertCancel.addEventListener('click', function () { hideAllDialogs(); });
+    }
+
+    // ---- Form: Contribuir capital ----
+    var formContrib = el('form-contrib');
+    if (formContrib && !formContrib.dataset.bound) {
+      formContrib.dataset.bound = '1';
+      formContrib.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        var msgEl = el('contrib-msg');
+        var accountId = el('contrib-cuenta') && el('contrib-cuenta').value;
+        var amount = parseFloat(el('contrib-monto') && el('contrib-monto').value);
+        var origin = (el('contrib-origen') && el('contrib-origen').value) || '';
+        var rate = parseFloat(el('contrib-tasa') && el('contrib-tasa').value);
+        var date = el('contrib-fecha') && el('contrib-fecha').value;
+        if (!accountId) { msgEl.textContent = 'Elegí una cuenta destino.'; return; }
+        if (!Number.isFinite(amount) || amount <= 0) { msgEl.textContent = 'Monto debe ser un número > 0.'; return; }
+        if (!date) { msgEl.textContent = 'Fecha inválida.'; return; }
+        rate = Number.isFinite(rate) && rate > 0 ? rate : undefined;
+        if (createContribution(accountId, amount, origin, rate, date)) {
+          hideAllDialogs();
+        } else {
+          msgEl.textContent = 'Error al registrar. Revisá los datos.';
+        }
+      });
+    }
+
+    // ---- Form: Retirar capital ----
+    var formWithdraw = el('form-withdraw');
+    if (formWithdraw && !formWithdraw.dataset.bound) {
+      formWithdraw.dataset.bound = '1';
+      formWithdraw.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        var msgEl = el('withdraw-msg');
+        var accountId = el('withdraw-cuenta') && el('withdraw-cuenta').value;
+        var amount = parseFloat(el('withdraw-monto') && el('withdraw-monto').value);
+        var destination = (el('withdraw-destino') && el('withdraw-destino').value) || '';
+        var rate = parseFloat(el('withdraw-tasa') && el('withdraw-tasa').value);
+        var date = el('withdraw-fecha') && el('withdraw-fecha').value;
+        if (!accountId) { msgEl.textContent = 'Elegí una cuenta origen.'; return; }
+        if (!Number.isFinite(amount) || amount <= 0) { msgEl.textContent = 'Monto debe ser un número > 0.'; return; }
+        if (!date) { msgEl.textContent = 'Fecha inválida.'; return; }
+        rate = Number.isFinite(rate) && rate > 0 ? rate : undefined;
+        if (createWithdrawal(accountId, amount, destination, rate, date)) {
+          hideAllDialogs();
+        } else {
+          msgEl.textContent = 'Error al registrar. Revisá los datos (posible saldo insuficiente).';
+        }
+      });
+      // Live balance display on account change
+      if (el('withdraw-cuenta')) {
+        el('withdraw-cuenta').addEventListener('change', function () {
+          var sel = el('withdraw-cuenta');
+          if (!sel || !sel.value) { el('withdraw-saldo-info').textContent = ''; return; }
+          var bal = eng.accountBalance(S.ledger, sel.value);
+          if (bal) {
+            el('withdraw-saldo-info').textContent = 'Saldo actual: ' + fmtMoney(bal.native, bal.currency);
+          }
+        });
+      }
+    }
+
+    // ---- Form: Convertir / Transferir ----
+    var formConvert = el('form-convert');
+    if (formConvert && !formConvert.dataset.bound) {
+      formConvert.dataset.bound = '1';
+      formConvert.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        var msgEl = el('convert-msg');
+        var fromId = el('convert-cuenta-from') && el('convert-cuenta-from').value;
+        var toId = el('convert-cuenta-to') && el('convert-cuenta-to').value;
+        var fromAmount = parseFloat(el('convert-monto-from') && el('convert-monto-from').value);
+        var rate = parseFloat(el('convert-tasa') && el('convert-tasa').value);
+        var manualTo = parseFloat(el('convert-monto-to') && el('convert-monto-to').value);
+        var nota = (el('convert-nota') && el('convert-nota').value) || '';
+        var date = el('convert-fecha') && el('convert-fecha').value;
+        if (!fromId || !toId) { msgEl.textContent = 'Elegí ambas cuentas.'; return; }
+        if (fromId === toId) { msgEl.textContent = 'Las cuentas origen y destino deben ser distintas.'; return; }
+        if (!Number.isFinite(fromAmount) || fromAmount <= 0) { msgEl.textContent = 'Monto origen debe ser > 0.'; return; }
+        if (!Number.isFinite(rate) || rate <= 0) { msgEl.textContent = 'Tasa debe ser un número > 0.'; return; }
+        if (!date) { msgEl.textContent = 'Fecha inválida.'; return; }
+        if (createExchange(fromId, toId, fromAmount, rate, date)) {
+          hideAllDialogs();
+        } else {
+          msgEl.textContent = 'Error al registrar. Revisá los datos.';
+        }
+      });
+      // Auto-calculate delivered amount on rate change
+      if (el('convert-tasa')) {
+        el('convert-tasa').addEventListener('input', function () {
+          var fromAmount = parseFloat(el('convert-monto-from') && el('convert-monto-from').value);
+          var rate = parseFloat(el('convert-tasa') && el('convert-tasa').value);
+          if (Number.isFinite(fromAmount) && fromAmount > 0 && Number.isFinite(rate) && rate > 0) {
+            el('convert-monto-to').value = Number((fromAmount * rate).toFixed(8)).toString();
+          }
+        });
+      }
+      // Currency info on account change
+      ['convert-cuenta-from', 'convert-cuenta-to'].forEach(function (id) {
+        var sel = el(id);
+        if (sel) {
+          sel.addEventListener('change', function () {
+            var fromId = el('convert-cuenta-from') && el('convert-cuenta-from').value;
+            var toId = el('convert-cuenta-to') && el('convert-cuenta-to').value;
+            if (fromId && toId) {
+              var fromAcc = eng.accountById(S.ledger, fromId);
+              var toAcc = eng.accountById(S.ledger, toId);
+              if (fromAcc && toAcc) {
+                el('convert-currency-info').textContent = fromAcc.currency === toAcc.currency
+                  ? '→ Misma moneda (' + fromAcc.currency + '): se registrará como Transferencia.'
+                  : '→ Diferente moneda (' + fromAcc.currency + ' → ' + toAcc.currency + '): se registrará como Conversión.';
+              }
+            }
+          });
+        }
+      });
+    }
+
+    // ---- Filter: Capital movements list ----
+    var filterCapTipo = el('capital-tipo');
+    if (filterCapTipo && !filterCapTipo.dataset.bound) {
+      filterCapTipo.dataset.bound = '1';
+      filterCapTipo.addEventListener('change', function () { renderCapitalMovements(); });
+    }
+  }
 
   function bindCuentas() {
     const editId = el('cuentas-edit-id');
@@ -2100,6 +2598,7 @@
     renderCuentas();
     renderBalance();
     renderHistorico();
+    renderCapitalMovements();
     renderCasos();
   }
   CT.afterLedgerMutation = afterLedgerMutation;
@@ -2169,6 +2668,7 @@
     bindRefresh();
     bindCasos();
     bindCuentas();
+    bindCapitalForms();
     bindHistorico();
     fillCurrencySelects();
 

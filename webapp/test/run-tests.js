@@ -219,6 +219,35 @@ const CT = sandbox.CT;
     check('comprobador: enlaces data/workflow (estáticos en index.html)', true);
   } catch (e) { failures++; console.error('  ✗ comprobador: ' + e.message); }
 
+
+  // ==================== Tests de movimientos de capital ====================
+
+  // Setup mínimo para las pruebas de capital: necesitamos ledger con cuentas
+  try {
+    var eng = require('../assets/engine.js');
+    var initialState = eng.createInitialState();
+    initialState.accounts = [
+      { id: 'test-usdt', name: 'USDT Binance', currency: 'USDT', kind: 'exchange', country: 'PA', opening: 1000, primary: true },
+      { id: 'test-ves', name: 'VES Banco', currency: 'VES', kind: 'bank', country: 'VE', opening: 0, primary: true },
+      { id: 'test-pen', name: 'PEN Panamá', currency: 'PEN', kind: 'bank', country: 'PA', opening: 500, primary: true },
+    ];
+    initialState.movements = [];
+    initialState.periods = {};
+    eng.save(initialState);
+
+    // CT.computeOperation para capital (ya probada arriba, pero verificamos la interfaz en contexto de ledger)
+    var r = CT.computeOperation({ sale: 100, saleRate: 1000, entry: 100, entryRate: 1000, tercero: false });
+    check('computeOperation sin ganancia: plusvalia=0', r.ok === true && r.plusvalia === 0);
+    check('computeOperation sin ganancia: netoParaMi=0', r.netoParaMi === 0);
+    check('computeOperation sin ganancia: diezmo=0', r.diezmo === 0);
+
+    // Verificar que las funciones de capital existen en el scope global (app.js las define)
+    // todayISO es una función local de app.js (no exportada), no se puede verificar directamente
+  } catch (e) {
+    failures++;
+    console.error('  ✗ capital setup: ' + e.message);
+  }
+
   console.log('\n===== RESULTADO: ' + (checks - failures) + '/' + checks + ' pruebas OK, ' + failures + ' fallidas =====');
   process.exit(failures ? 1 : 0);
 })();

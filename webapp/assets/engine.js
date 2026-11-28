@@ -1395,6 +1395,7 @@
     verifyChain: verifyChain,
     chainHead: chainHead,
     accountBalance: accountBalance,
+    unitPerUsdOf: unitPerUsdOf,
     balance: balance,
     closePeriod: closePeriod,
     isPeriodClosed: isPeriodClosed,

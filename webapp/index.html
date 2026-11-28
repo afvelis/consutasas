@@ -117,6 +117,106 @@
       <div id="cuentas-avisos"></div>
       <div id="cuentas-lista" aria-label="Tarjetas de cuentas"></div>
 
+      <!-- Acciones rápidas de capital -->
+      <div class="card">
+        <h2>Movimientos de capital</h2>
+        <div class="actions">
+          <button type="button" id="btn-contrib" class="btn btn-small btn-add">+ Contribuir capital</button>
+          <button type="button" id="btn-withdraw" class="btn btn-small btn-warning">− Retirar capital</button>
+          <button type="button" id="btn-convert" class="btn btn-small">⇄ Convertir / Transferir</button>
+        </div>
+      </div>
+
+      <!-- Dialog: Contribuir capital -->
+      <div class="card dialog-capital" id="dialog-contrib" hidden>
+        <h2>Contribuir capital</h2>
+        <form id="form-contrib" novalidate>
+          <label for="contrib-cuenta">Cuenta destino</label>
+          <select id="contrib-cuenta" disabled></select>
+          <label for="contrib-monto">Monto</label>
+          <input id="contrib-monto" type="number" inputmode="decimal" step="any" min="0" autocomplete="off" placeholder="0,00" required>
+          <label for="contrib-origen">Origen / fuente (justificación)</label>
+          <input id="contrib-origen" type="text" maxlength="200" autocomplete="off" placeholder="Binance P2P, transferencia desde Panamá…">
+          <label for="contrib-tasa">Tasa de compra (opcional, para historización del capital)</label>
+          <input id="contrib-tasa" type="number" inputmode="decimal" step="any" min="0" autocomplete="off" placeholder="Ej: 38,50">
+          <label for="contrib-fecha">Fecha</label>
+          <input id="contrib-fecha" type="date" autocomplete="off">
+          <button type="submit" class="btn btn-primary btn-big">Registrar contribución</button>
+          <button type="button" id="contrib-cancel" class="btn btn-big">Cancelar</button>
+          <p class="muted hint" id="contrib-msg"></p>
+        </form>
+      </div>
+
+      <!-- Dialog: Retirar capital -->
+      <div class="card dialog-capital" id="dialog-withdraw" hidden>
+        <h2>Retirar capital</h2>
+        <form id="form-withdraw" novalidate>
+          <label for="withdraw-cuenta">Cuenta origen</label>
+          <select id="withdraw-cuenta" disabled></select>
+          <label for="withdraw-monto">Monto</label>
+          <input id="withdraw-monto" type="number" inputmode="decimal" step="any" min="0" autocomplete="off" placeholder="0,00" required>
+          <div id="withdraw-saldo-info" class="muted hint"></div>
+          <label for="withdraw-destino">Destino (justificación)</label>
+          <input id="withdraw-destino" type="text" maxlength="200" autocomplete="off" placeholder="gasto personal, pago a tercero…">
+          <label for="withdraw-tasa">Tasa (opcional, para historización del capital)</label>
+          <input id="withdraw-tasa" type="number" inputmode="decimal" step="any" min="0" autocomplete="off" placeholder="Ej: 38,50">
+          <label for="withdraw-fecha">Fecha</label>
+          <input id="withdraw-fecha" type="date" autocomplete="off">
+          <button type="submit" class="btn btn-warning btn-big">Registrar retiro</button>
+          <button type="button" id="withdraw-cancel" class="btn btn-big">Cancelar</button>
+          <p class="muted hint" id="withdraw-msg"></p>
+        </form>
+      </div>
+
+      <!-- Dialog: Convertir / Transferir entre cuentas -->
+      <div class="card dialog-capital" id="dialog-convert" hidden>
+        <h2>Convertir / Transferir entre cuentas</h2>
+        <form id="form-convert" novalidate>
+          <div class="form2col">
+            <div>
+              <label for="convert-cuenta-from">Cuenta origen</label>
+              <select id="convert-cuenta-from" disabled></select>
+            </div>
+            <div>
+              <label for="convert-cuenta-to">Cuenta destino</label>
+              <select id="convert-cuenta-to" disabled></select>
+            </div>
+          </div>
+          <div id="convert-currency-info" class="muted hint"></div>
+          <label for="convert-monto-from">Monto origen</label>
+          <input id="convert-monto-from" type="number" inputmode="decimal" step="any" min="0" autocomplete="off" placeholder="0,00" required>
+          <label for="convert-tasa">Tasa (monto entregado por monto origen, ej: 38,50 VES por 1 USDT)</label>
+          <input id="convert-tasa" type="number" inputmode="decimal" step="any" min="0" autocomplete="off" placeholder="Ej: 38,50">
+          <label for="convert-monto-to">Monto entregado</label>
+          <input id="convert-monto-to" type="number" inputmode="decimal" step="any" min="0" autocomplete="off" placeholder="Auto-calculado o manual">
+          <label for="convert-nota">Justificación</label>
+          <input id="convert-nota" type="text" maxlength="200" autocomplete="off" placeholder="Convirtiendo para cubrir caso del 25/11…">
+          <label for="convert-fecha">Fecha</label>
+          <input id="convert-fecha" type="date" autocomplete="off">
+          <button type="submit" class="btn btn-primary btn-big">Registrar conversión</button>
+          <button type="button" id="convert-cancel" class="btn btn-big">Cancelar</button>
+          <p class="muted hint" id="convert-msg"></p>
+        </form>
+      </div>
+
+      <!-- Lista de movimientos de capital -->
+      <div class="card" id="capital-movimientos" hidden>
+        <h2>Movimientos de capital</h2>
+        <div class="form2col">
+          <div>
+            <label for="capital-tipo">Tipo</label>
+            <select id="capital-tipo">
+              <option value="all">Todos</option>
+              <option value="contribution">Aporte</option>
+              <option value="withdrawal">Retiro</option>
+              <option value="transfer">Transferencia</option>
+              <option value="exchange">Conversión</option>
+            </select>
+          </div>
+        </div>
+        <div id="capital-lista" aria-label="Movimientos de capital"></div>
+      </div>
+
       <div class="card">
         <h2>Editar apertura</h2>
         <div class="form2col">
